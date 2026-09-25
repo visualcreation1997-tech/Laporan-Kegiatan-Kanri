@@ -1,1 +1,315 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laporan Kegiatan Harian</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.js"></script>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--text:#1c1f26;--muted:#6b7280;--accent:#2563eb;--accent-d:#1d4ed8;--border:#e2e5ea;--danger:#dc2626;}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#14161a;--card:#1e2127;--text:#e8e9ec;--muted:#9aa0aa;--accent:#3b82f6;--accent-d:#60a5fa;--border:#2c3038;}}
+:root[data-theme="dark"]{--bg:#14161a;--card:#1e2127;--text:#e8e9ec;--muted:#9aa0aa;--accent:#3b82f6;--accent-d:#60a5fa;--border:#2c3038;}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
+.wrap{max-width:900px;margin:0 auto;padding:calc(20px + env(safe-area-inset-top,0px)) 16px calc(60px + env(safe-area-inset-bottom,0px));}
+h1{font-size:1.3rem;margin:0 0 4px;}
+.sub{color:var(--muted);font-size:.85rem;margin-bottom:18px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;}
+label{display:block;font-size:.8rem;color:var(--muted);margin:10px 0 4px;}
+input[type=text],input[type=date],textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.9rem;}
+textarea{resize:vertical;min-height:50px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.file-box{border:1.5px dashed var(--border);border-radius:8px;padding:10px;text-align:center;font-size:.8rem;color:var(--muted);cursor:pointer;position:relative;overflow:hidden;min-height:80px;display:flex;align-items:center;justify-content:center;}
+.file-box img{max-width:100%;max-height:100px;border-radius:6px;}
+.file-box input{position:absolute;inset:0;opacity:0;cursor:pointer;}
+button{cursor:pointer;border:none;border-radius:8px;font-size:.9rem;font-weight:600;padding:10px 16px;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent-d);}
+.btn-ghost{background:transparent;color:var(--accent);border:1px solid var(--accent);}
+.btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger);padding:6px 10px;font-size:.78rem;}
+.row-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;}
+table{width:100%;border-collapse:collapse;font-size:.82rem;}
+th,td{border:1px solid var(--border);padding:6px 8px;text-align:center;vertical-align:middle;}
+th{background:var(--bg);}
+td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;border-radius:4px;}
+.tbl-wrap{overflow-x:auto;}
+.empty{color:var(--muted);font-size:.85rem;text-align:center;padding:20px 0;}
+.desk{font-size:.78rem;text-align:left;max-width:200px;}
+.small{font-size:.75rem;color:var(--muted);}
+.badge{display:inline-block;background:var(--accent);color:#fff;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-left:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📋 Laporan Kegiatan Harian</h1>
+  <div class="sub">Data & foto disimpan di perangkat ini (IndexedDB) — mendukung ratusan foto per bulan. <span class="badge" id="dbstat">memuat...</span></div>
 
+  <div class="card">
+    <strong>Kop Laporan</strong>
+    <label>Judul Laporan</label>
+    <input id="judul" type="text" placeholder="Contoh: LAPORAN KEGIATAN">
+    <label>Sub Judul / Nama Kegiatan</label>
+    <input id="subjudul" type="text" placeholder="Contoh: Belanja Jasa Untuk Tenaga Kebersihan (Satgas)">
+    <div class="grid2">
+      <div><label>Nama Pegawai</label><input id="nama" type="text" placeholder="Nama lengkap"></div>
+      <div><label>Bulan</label><input id="bulan" type="text" placeholder="Contoh: September 2026"></div>
+    </div>
+    <label>Jadwal Jam Kerja (opsional)</label>
+    <textarea id="jadwal" placeholder="Senin - Kamis : 07.30 - 16.00&#10;Jumat : 07.30 - 16.30&#10;Sabtu/Minggu : 06.00 - 14.00"></textarea>
+  </div>
+
+  <div class="card">
+    <strong>Tambah Data Kegiatan</strong>
+    <div class="grid2">
+      <div><label>Tanggal</label><input id="f_tanggal" type="date"></div>
+      <div><label>Uraian Kegiatan</label><input id="f_desk" type="text" placeholder="Contoh: Membersihkan ruang pelatihan"></div>
+    </div>
+    <label>Dokumentasi Kegiatan (foto)</label>
+    <div class="file-box" id="box_foto">Tap untuk upload foto<input type="file" accept="image/*" id="f_foto"></div>
+    <div class="row-actions"><button class="btn-primary" onclick="tambahData()">+ Tambah ke Daftar</button></div>
+  </div>
+
+  <div class="card">
+    <strong>Daftar Kegiatan (<span id="count">0</span>)</strong>
+    <div class="tbl-wrap" id="tableHolder"><div class="empty">Memuat data...</div></div>
+  </div>
+
+  <div class="card">
+    <strong>Tanda Tangan (untuk dokumen Word)</strong>
+    <div class="grid2">
+      <div><label>Nama PPK</label><input id="ppk_nama" type="text" placeholder="Nama Pejabat Pembuat Komitmen"></div>
+      <div><label>Jabatan PPK</label><input id="ppk_jabatan" type="text" placeholder="Contoh: Pembina"></div>
+    </div>
+    <label>NIP PPK</label>
+    <input id="ppk_nip" type="text" placeholder="Contoh: 19801009 199912 1 002">
+  </div>
+
+  <div class="row-actions">
+    <button class="btn-primary" onclick="unduhWord()">⬇️ Unduh sebagai Word (.docx)</button>
+    <button class="btn-ghost" onclick="if(confirm('Hapus semua data bulan ini?'))resetData()">Hapus Semua</button>
+  </div>
+</div>
+
+<script>
+/* ---------- IndexedDB layer (kapasitas besar untuk ratusan foto) ---------- */
+let dbPromise = new Promise((resolve, reject)=>{
+  const req = indexedDB.open('laporanKegiatanDB', 1);
+  req.onupgradeneeded = e=>{
+    const db = e.target.result;
+    if(!db.objectStoreNames.contains('kegiatan')){
+      db.createObjectStore('kegiatan', {keyPath:'id', autoIncrement:true});
+    }
+  };
+  req.onsuccess = e=> resolve(e.target.result);
+  req.onerror = e=> reject(e.target.error);
+});
+
+async function dbAdd(item){
+  const db = await dbPromise;
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('kegiatan','readwrite');
+    tx.objectStore('kegiatan').add(item);
+    tx.oncomplete = ()=>res();
+    tx.onerror = e=>rej(e.target.error);
+  });
+}
+async function dbGetAll(){
+  const db = await dbPromise;
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('kegiatan','readonly');
+    const req = tx.objectStore('kegiatan').getAll();
+    req.onsuccess = ()=>res(req.result.sort((a,b)=>(a.tanggal||'').localeCompare(b.tanggal||'')));
+    req.onerror = e=>rej(e.target.error);
+  });
+}
+async function dbDelete(id){
+  const db = await dbPromise;
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('kegiatan','readwrite');
+    tx.objectStore('kegiatan').delete(id);
+    tx.oncomplete = ()=>res();
+    tx.onerror = e=>rej(e.target.error);
+  });
+}
+async function dbClear(){
+  const db = await dbPromise;
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('kegiatan','readwrite');
+    tx.objectStore('kegiatan').clear();
+    tx.oncomplete = ()=>res();
+    tx.onerror = e=>rej(e.target.error);
+  });
+}
+
+/* ---------- Info kop laporan (teks kecil, aman di localStorage) ---------- */
+try{
+  const info = localStorage.getItem('laporan_info');
+  if(info){
+    const o = JSON.parse(info);
+    document.getElementById('judul').value = o.judul||'LAPORAN KEGIATAN';
+    document.getElementById('subjudul').value = o.subjudul||'';
+    document.getElementById('nama').value = o.nama||'';
+    document.getElementById('bulan').value = o.bulan||'';
+    document.getElementById('jadwal').value = o.jadwal||'';
+    document.getElementById('ppk_nama').value = o.ppk_nama||'';
+    document.getElementById('ppk_jabatan').value = o.ppk_jabatan||'';
+    document.getElementById('ppk_nip').value = o.ppk_nip||'';
+  } else { document.getElementById('judul').value = 'LAPORAN KEGIATAN'; }
+}catch(e){ console.warn('load info gagal', e); }
+
+function saveInfo(){
+  try{
+    localStorage.setItem('laporan_info', JSON.stringify({
+      judul: document.getElementById('judul').value,
+      subjudul: document.getElementById('subjudul').value,
+      nama: document.getElementById('nama').value,
+      bulan: document.getElementById('bulan').value,
+      jadwal: document.getElementById('jadwal').value,
+      ppk_nama: document.getElementById('ppk_nama').value,
+      ppk_jabatan: document.getElementById('ppk_jabatan').value,
+      ppk_nip: document.getElementById('ppk_nip').value
+    }));
+  }catch(e){}
+}
+['judul','subjudul','nama','bulan','jadwal','ppk_nama','ppk_jabatan','ppk_nip'].forEach(id=>document.getElementById(id).addEventListener('input', saveInfo));
+
+/* ---------- Upload & kompres foto ---------- */
+function resizeImage(file, cb){
+  const reader = new FileReader();
+  reader.onload = e=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const maxW = 500;
+      const scale = Math.min(1, maxW/img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width*scale; canvas.height = img.height*scale;
+      canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+      cb(canvas.toDataURL('image/jpeg',0.72));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function setupFileBox(){
+  const inp = document.getElementById('f_foto');
+  const box = document.getElementById('box_foto');
+  inp.addEventListener('change', ()=>{
+    if(!inp.files[0]) return;
+    resizeImage(inp.files[0], dataUrl=>{
+      box.dataset.img = dataUrl;
+      box.innerHTML = '<img src="'+dataUrl+'">';
+      const newInput = document.createElement('input');
+      newInput.type='file'; newInput.accept='image/*'; newInput.id='f_foto';
+      newInput.style.cssText='position:absolute;inset:0;opacity:0;cursor:pointer;';
+      box.appendChild(newInput);
+      setupFileBox();
+    });
+  });
+}
+setupFileBox();
+
+/* ---------- CRUD data kegiatan ---------- */
+async function tambahData(){
+  const tanggal = document.getElementById('f_tanggal').value;
+  const desk = document.getElementById('f_desk').value;
+  const foto = document.getElementById('box_foto').dataset.img || '';
+  if(!tanggal || !desk){ alert('Mohon isi tanggal dan uraian kegiatan.'); return; }
+  try{
+    await dbAdd({tanggal, desk, foto});
+    await renderTable();
+    document.getElementById('f_desk').value='';
+    document.getElementById('f_tanggal').value='';
+    document.getElementById('box_foto').innerHTML='Tap untuk upload foto';
+    document.getElementById('box_foto').dataset.img='';
+    setupFileBox();
+  }catch(e){ alert('Gagal menyimpan: '+e.message); }
+}
+async function hapusBaris(id){
+  await dbDelete(id);
+  await renderTable();
+}
+async function resetData(){
+  await dbClear();
+  await renderTable();
+}
+function fmtTgl(t){
+  if(!t) return '-';
+  const d = new Date(t+'T00:00:00');
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+}
+async function renderTable(){
+  const data = await dbGetAll();
+  document.getElementById('count').textContent = data.length;
+  document.getElementById('dbstat').textContent = data.length+' data tersimpan';
+  const holder = document.getElementById('tableHolder');
+  if(data.length===0){ holder.innerHTML = '<div class="empty">Belum ada data.</div>'; return; }
+  let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Dokumentasi Kegiatan</th><th>Uraian Kegiatan</th><th></th></tr></thead><tbody>';
+  data.forEach((d,i)=>{
+    html += '<tr><td>'+(i+1)+'</td><td>'+fmtTgl(d.tanggal)+'</td>'
+      + '<td class="imgcell">'+(d.foto?'<img src="'+d.foto+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
+      + '<td class="desk">'+(d.desk||'')+'</td>'
+      + '<td><button class="btn-danger" onclick="hapusBaris('+d.id+')">Hapus</button></td></tr>';
+  });
+  html += '</tbody></table>';
+  holder.innerHTML = html;
+}
+renderTable();
+
+/* ---------- Export ke Word ---------- */
+async function unduhWord(){
+  const data = await dbGetAll();
+  if(data.length===0){ alert('Belum ada data untuk diunduh.'); return; }
+  const judul = document.getElementById('judul').value || 'LAPORAN KEGIATAN';
+  const subjudul = document.getElementById('subjudul').value || '';
+  const nama = document.getElementById('nama').value || '-';
+  const bulan = document.getElementById('bulan').value || '-';
+  const jadwal = (document.getElementById('jadwal').value || '').split('\n').filter(x=>x.trim()!=='');
+  const ppkNama = document.getElementById('ppk_nama').value || '';
+  const ppkJabatan = document.getElementById('ppk_jabatan').value || '';
+  const ppkNip = document.getElementById('ppk_nip').value || '';
+
+  let rows = '';
+  data.forEach((d,i)=>{
+    rows += '<tr>'
+      + '<td style="text-align:center;vertical-align:middle;">'+(i+1)+'</td>'
+      + '<td style="text-align:center;vertical-align:middle;">'+fmtTgl(d.tanggal)+'</td>'
+      + '<td style="text-align:center;vertical-align:middle;">'+(d.foto?'<img src="'+d.foto+'" style="max-width:180px;">':'')+'</td>'
+      + '<td style="text-align:center;vertical-align:middle;">'+(d.desk||'')+'</td>'
+      + '</tr>';
+  });
+  const jadwalHtml = jadwal.length ? '<div style="text-align:right;font-size:10.5pt;">'+jadwal.join('<br>')+'</div>' : '';
+
+  const fullHtml = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'
+    + '<head><meta charset="utf-8"><title>'+judul+'</title></head><body style="font-family:Calibri,Arial,sans-serif;">'
+    + '<div style="text-align:center;font-weight:bold;font-size:13pt;">'+judul+'</div>'
+    + (subjudul ? '<div style="text-align:center;font-size:11pt;margin-bottom:8px;">'+subjudul+'</div>' : '<div style="margin-bottom:8px;"></div>')
+    + '<table style="width:100%;border:none;"><tr>'
+    + '<td style="border:none;vertical-align:top;font-size:11pt;">Nama : '+nama+'<br>Bulan : '+bulan+'</td>'
+    + '<td style="border:none;vertical-align:top;">'+jadwalHtml+'</td>'
+    + '</tr></table>'
+    + '<table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:11pt;margin-top:8px;">'
+    + '<thead><tr style="background:#eee;"><th style="width:5%;">No</th><th style="width:12%;">Tanggal</th><th style="width:38%;">Dokumentasi Kegiatan</th><th>Uraian Kegiatan</th></tr></thead>'
+    + '<tbody>'+rows+'</tbody></table>'
+    + '<br><br>'
+    + '<table style="width:100%;border:none;"><tr>'
+    + '<td style="border:none;text-align:center;width:50%;">Mengetahui,<br>'+(ppkJabatan||'PPK')+',<br><br><br><br><u>'+(ppkNama||'&nbsp;')+'</u><br>'+(ppkJabatan?ppkJabatan+'<br>':'')+(ppkNip?'NIP. '+ppkNip:'')+'</td>'
+    + '<td style="border:none;text-align:center;width:50%;">Yang Membuat Laporan,<br><br><br><br><br><u>'+nama+'</u></td>'
+    + '</tr></table>'
+    + '</body></html>';
+
+  try{
+    const converted = htmlDocx.asBlob(fullHtml);
+    const url = URL.createObjectURL(converted);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Laporan_Kegiatan_'+(nama||'pegawai').replace(/\s+/g,'_')+'_'+(bulan||'').replace(/\s+/g,'_')+'.docx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }catch(e){ alert('Gagal membuat file Word: '+e.message); }
+}
+</script>
+</body>
+</html>
