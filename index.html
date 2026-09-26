@@ -460,7 +460,8 @@ async function unduhWord(){
   let judul, subjudul, nama, bulan, jadwal, ppkNama, ppkJabatan, ppkNip, btn;
   try{
     const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, ImageRun,
-            WidthType, AlignmentType, VerticalAlign, BorderStyle, HeadingLevel } = docx;
+            WidthType, AlignmentType, VerticalAlign, BorderStyle, HeadingLevel,
+            Header, Tab, TabStopType } = docx;
 
     judul = document.getElementById('judul').value || 'LAPORAN KEGIATAN';
     subjudul = document.getElementById('subjudul').value || '';
@@ -490,18 +491,21 @@ async function unduhWord(){
       cell([p('Uraian Kegiatan', {bold:true})], 3),
     ]});
 
-    // Baris info Nama/Bulan/Jadwal — ditandai tableHeader:true supaya Word mengulanginya
-    // di bagian atas setiap halaman baru, bukan cuma muncul sekali di halaman pertama.
-    const jadwalParas = jadwal.length
-      ? jadwal.map(j=> new Paragraph({ alignment: AlignmentType.RIGHT, children:[new TextRun(j)] }))
-      : [new Paragraph('')];
-    const infoRow = new TableRow({ tableHeader:true, children:[
-      new TableCell({
-        children:[ p('Nama : '+nama, {alignment:AlignmentType.LEFT}), p('Bulan : '+bulan, {alignment:AlignmentType.LEFT}) ],
-        columnSpan: 3, verticalAlign: VerticalAlign.CENTER
-      }),
-      new TableCell({ children: jadwalParas, verticalAlign: VerticalAlign.CENTER }),
-    ]});
+    // Nama/Bulan/Jadwal dibuat sebagai Header halaman Word asli (bukan tabel) —
+    // otomatis berulang di atas setiap halaman baru tanpa garis tabel.
+    const PAGE_CONTENT_WIDTH = 9350; // twips, kira-kira lebar isi halaman (Letter dikurangi margin default)
+    const tabLine = (left, right) => new Paragraph({
+      tabStops: [{ type: TabStopType.RIGHT, position: PAGE_CONTENT_WIDTH }],
+      children: [ new TextRun(left||''), new Tab(), new TextRun(right||'') ]
+    });
+    const jumlahBarisHeader = Math.max(2, jadwal.length);
+    const headerLines = [];
+    for(let i=0;i<jumlahBarisHeader;i++){
+      const kiri = i===0 ? ('Nama : '+nama) : i===1 ? ('Bulan : '+bulan) : '';
+      const kanan = jadwal[i] || '';
+      headerLines.push(tabLine(kiri, kanan));
+    }
+    const docHeader = new Header({ children: headerLines });
 
     const dataRows = [];
     for(let i=0;i<currentData.length;i++){
@@ -527,7 +531,7 @@ async function unduhWord(){
     const mainTable = new Table({
       width:{ size:100, type:WidthType.PERCENTAGE },
       columnWidths: COL_WIDTHS,
-      rows:[infoRow, headerRow, ...dataRows]
+      rows:[headerRow, ...dataRows]
     });
 
     const SIG_COL_WIDTHS = [4675, 4675];
@@ -555,14 +559,17 @@ async function unduhWord(){
       ]})]
     });
 
-    const doc = new Document({ sections:[{ children:[
-      new Paragraph({ alignment: AlignmentType.CENTER, children:[new TextRun({text:judul, bold:true, size:28})] }),
-      ...(subjudul?[new Paragraph({ alignment: AlignmentType.CENTER, children:[new TextRun({text:subjudul, size:22})] })]:[]),
-      new Paragraph(''),
-      mainTable,
-      new Paragraph(''), new Paragraph(''),
-      sigTable
-    ]}]});
+    const doc = new Document({ sections:[{
+      headers: { default: docHeader },
+      children:[
+        new Paragraph({ alignment: AlignmentType.CENTER, children:[new TextRun({text:judul, bold:true, size:28})] }),
+        ...(subjudul?[new Paragraph({ alignment: AlignmentType.CENTER, children:[new TextRun({text:subjudul, size:22})] })]:[]),
+        new Paragraph(''),
+        mainTable,
+        new Paragraph(''), new Paragraph(''),
+        sigTable
+      ]
+    }]});
 
     const blob = await Packer.toBlob(doc);
     const url = URL.createObjectURL(blob);
