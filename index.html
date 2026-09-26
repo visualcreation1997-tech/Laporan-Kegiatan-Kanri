@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Laporan Kegiatan Harian</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.js"></script>
 <style>
@@ -24,11 +25,12 @@ textarea{resize:vertical;min-height:50px}
 .file-box img{max-width:100%;max-height:100px;border-radius:6px;}
 .file-box input{position:absolute;inset:0;opacity:0;cursor:pointer;}
 button{cursor:pointer;border:none;border-radius:8px;font-size:.9rem;font-weight:600;padding:10px 16px;}
+button:disabled{opacity:.6;cursor:not-allowed;}
 .btn-primary{background:var(--accent);color:#fff;}
 .btn-primary:hover{background:var(--accent-d);}
 .btn-ghost{background:transparent;color:var(--accent);border:1px solid var(--accent);}
 .btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger);padding:6px 10px;font-size:.78rem;}
-.row-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;}
+.row-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center;}
 table{width:100%;border-collapse:collapse;font-size:.82rem;}
 th,td{border:1px solid var(--border);padding:6px 8px;text-align:center;vertical-align:middle;}
 th{background:var(--bg);}
@@ -37,13 +39,16 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
 .empty{color:var(--muted);font-size:.85rem;text-align:center;padding:20px 0;}
 .desk{font-size:.78rem;text-align:left;max-width:200px;}
 .small{font-size:.75rem;color:var(--muted);}
-.badge{display:inline-block;background:var(--accent);color:#fff;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-left:6px;}
+.status{font-size:.78rem;color:var(--accent);}
+.warn{background:#fff3cd;color:#7a5b00;border:1px solid #ffe08a;border-radius:8px;padding:10px 12px;font-size:.8rem;margin-bottom:16px;}
+:root[data-theme="dark"] .warn,@media(prefers-color-scheme:dark){.warn{background:#3a2f0a;color:#f0d27a;border-color:#5a4a15;}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>📋 Laporan Kegiatan Harian</h1>
-  <div class="sub">Data & foto disimpan di perangkat ini (IndexedDB) — mendukung ratusan foto per bulan. <span class="badge" id="dbstat">memuat...</span></div>
+  <div class="sub">Foto disimpan di Cloudinary, data tersimpan pusat di Supabase — bisa diakses dari perangkat manapun.</div>
+  <div class="warn">⚠️ Versi ini belum pakai login/otorisasi. Siapa pun yang punya link bisa menambah/menghapus data. Cocok untuk pemakaian internal terbatas; tambahkan Supabase Auth kalau perlu diperketat.</div>
 
   <div class="card">
     <strong>Kop Laporan</strong>
@@ -57,6 +62,10 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     </div>
     <label>Jadwal Jam Kerja (opsional)</label>
     <textarea id="jadwal" placeholder="Senin - Kamis : 07.30 - 16.00&#10;Jumat : 07.30 - 16.30&#10;Sabtu/Minggu : 06.00 - 14.00"></textarea>
+    <div class="row-actions">
+      <button class="btn-ghost" onclick="muatData()">🔄 Muat / Simpan Data untuk Nama+Bulan ini</button>
+      <span class="status" id="loadStatus"></span>
+    </div>
   </div>
 
   <div class="card">
@@ -67,12 +76,15 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     </div>
     <label>Dokumentasi Kegiatan (foto)</label>
     <div class="file-box" id="box_foto">Tap untuk upload foto<input type="file" accept="image/*" id="f_foto"></div>
-    <div class="row-actions"><button class="btn-primary" onclick="tambahData()">+ Tambah ke Daftar</button></div>
+    <div class="row-actions">
+      <button class="btn-primary" id="btnTambah" onclick="tambahData()">+ Tambah ke Daftar</button>
+      <span class="status" id="addStatus"></span>
+    </div>
   </div>
 
   <div class="card">
     <strong>Daftar Kegiatan (<span id="count">0</span>)</strong>
-    <div class="tbl-wrap" id="tableHolder"><div class="empty">Memuat data...</div></div>
+    <div class="tbl-wrap" id="tableHolder"><div class="empty">Isi Nama & Bulan lalu klik "Muat Data".</div></div>
   </div>
 
   <div class="card">
@@ -87,62 +99,24 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
 
   <div class="row-actions">
     <button class="btn-primary" onclick="unduhWord()">⬇️ Unduh sebagai Word (.docx)</button>
-    <button class="btn-ghost" onclick="if(confirm('Hapus semua data bulan ini?'))resetData()">Hapus Semua</button>
+    <button class="btn-ghost" onclick="if(confirm('Hapus semua data Nama+Bulan ini dari server?'))resetData()">Hapus Semua (bulan ini)</button>
   </div>
 </div>
 
 <script>
-/* ---------- IndexedDB layer (kapasitas besar untuk ratusan foto) ---------- */
-let dbPromise = new Promise((resolve, reject)=>{
-  const req = indexedDB.open('laporanKegiatanDB', 1);
-  req.onupgradeneeded = e=>{
-    const db = e.target.result;
-    if(!db.objectStoreNames.contains('kegiatan')){
-      db.createObjectStore('kegiatan', {keyPath:'id', autoIncrement:true});
-    }
-  };
-  req.onsuccess = e=> resolve(e.target.result);
-  req.onerror = e=> reject(e.target.error);
-});
+/* =========================================================
+   KONFIGURASI - ISI SEBELUM DEPLOY (lihat langkah setup)
+   ========================================================= */
+const CONFIG = {
+  SUPABASE_URL: "ISI_SUPABASE_PROJECT_URL",
+  SUPABASE_ANON_KEY: "ISI_SUPABASE_ANON_PUBLIC_KEY",
+  CLOUDINARY_CLOUD_NAME: "ISI_CLOUDINARY_CLOUD_NAME",
+  CLOUDINARY_UPLOAD_PRESET: "ISI_CLOUDINARY_UPLOAD_PRESET_UNSIGNED"
+};
+const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+let currentData = [];
 
-async function dbAdd(item){
-  const db = await dbPromise;
-  return new Promise((res,rej)=>{
-    const tx = db.transaction('kegiatan','readwrite');
-    tx.objectStore('kegiatan').add(item);
-    tx.oncomplete = ()=>res();
-    tx.onerror = e=>rej(e.target.error);
-  });
-}
-async function dbGetAll(){
-  const db = await dbPromise;
-  return new Promise((res,rej)=>{
-    const tx = db.transaction('kegiatan','readonly');
-    const req = tx.objectStore('kegiatan').getAll();
-    req.onsuccess = ()=>res(req.result.sort((a,b)=>(a.tanggal||'').localeCompare(b.tanggal||'')));
-    req.onerror = e=>rej(e.target.error);
-  });
-}
-async function dbDelete(id){
-  const db = await dbPromise;
-  return new Promise((res,rej)=>{
-    const tx = db.transaction('kegiatan','readwrite');
-    tx.objectStore('kegiatan').delete(id);
-    tx.oncomplete = ()=>res();
-    tx.onerror = e=>rej(e.target.error);
-  });
-}
-async function dbClear(){
-  const db = await dbPromise;
-  return new Promise((res,rej)=>{
-    const tx = db.transaction('kegiatan','readwrite');
-    tx.objectStore('kegiatan').clear();
-    tx.oncomplete = ()=>res();
-    tx.onerror = e=>rej(e.target.error);
-  });
-}
-
-/* ---------- Info kop laporan (teks kecil, aman di localStorage) ---------- */
+/* ---------- Info kop laporan (localStorage, ringan) ---------- */
 try{
   const info = localStorage.getItem('laporan_info');
   if(info){
@@ -174,18 +148,43 @@ function saveInfo(){
 }
 ['judul','subjudul','nama','bulan','jadwal','ppk_nama','ppk_jabatan','ppk_nip'].forEach(id=>document.getElementById(id).addEventListener('input', saveInfo));
 
-/* ---------- Upload & kompres foto ---------- */
-function resizeImage(file, cb){
+/* ---------- Muat data dari Supabase berdasar Nama+Bulan ---------- */
+async function muatData(){
+  saveInfo();
+  const nama = document.getElementById('nama').value.trim();
+  const bulan = document.getElementById('bulan').value.trim();
+  const st = document.getElementById('loadStatus');
+  if(!nama || !bulan){ alert('Isi Nama Pegawai dan Bulan dulu.'); return; }
+  st.textContent = 'Memuat...';
+  try{
+    const { data, error } = await sb.from('kegiatan').select('*')
+      .eq('nama_pegawai', nama).eq('bulan', bulan).order('tanggal', {ascending:true});
+    if(error) throw error;
+    currentData = data || [];
+    renderTable();
+    st.textContent = currentData.length+' data dimuat dari server.';
+  }catch(e){
+    st.textContent = '';
+    alert('Gagal memuat data: '+e.message+'\\nPastikan CONFIG (Supabase URL/key) sudah benar diisi.');
+  }
+}
+window.addEventListener('load', ()=>{
+  if(document.getElementById('nama').value && document.getElementById('bulan').value) muatData();
+});
+
+/* ---------- Upload & kompres foto, lalu unggah ke Cloudinary ---------- */
+let pendingBlob = null;
+function resizeToBlob(file, cb){
   const reader = new FileReader();
   reader.onload = e=>{
     const img = new Image();
     img.onload = ()=>{
-      const maxW = 500;
+      const maxW = 900;
       const scale = Math.min(1, maxW/img.width);
       const canvas = document.createElement('canvas');
       canvas.width = img.width*scale; canvas.height = img.height*scale;
       canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
-      cb(canvas.toDataURL('image/jpeg',0.72));
+      canvas.toBlob(blob=>cb(blob, canvas.toDataURL('image/jpeg',0.75)), 'image/jpeg', 0.8);
     };
     img.src = e.target.result;
   };
@@ -196,9 +195,9 @@ function setupFileBox(){
   const box = document.getElementById('box_foto');
   inp.addEventListener('change', ()=>{
     if(!inp.files[0]) return;
-    resizeImage(inp.files[0], dataUrl=>{
-      box.dataset.img = dataUrl;
-      box.innerHTML = '<img src="'+dataUrl+'">';
+    resizeToBlob(inp.files[0], (blob, previewUrl)=>{
+      pendingBlob = blob;
+      box.innerHTML = '<img src="'+previewUrl+'">';
       const newInput = document.createElement('input');
       newInput.type='file'; newInput.accept='image/*'; newInput.id='f_foto';
       newInput.style.cssText='position:absolute;inset:0;opacity:0;cursor:pointer;';
@@ -209,57 +208,100 @@ function setupFileBox(){
 }
 setupFileBox();
 
+async function uploadToCloudinary(blob){
+  const fd = new FormData();
+  fd.append('file', blob);
+  fd.append('upload_preset', CONFIG.CLOUDINARY_UPLOAD_PRESET);
+  const res = await fetch('https://api.cloudinary.com/v1_1/'+CONFIG.CLOUDINARY_CLOUD_NAME+'/image/upload', { method:'POST', body:fd });
+  const json = await res.json();
+  if(!res.ok) throw new Error(json.error?.message || 'Upload gagal');
+  return json.secure_url;
+}
+
 /* ---------- CRUD data kegiatan ---------- */
 async function tambahData(){
+  const nama = document.getElementById('nama').value.trim();
+  const bulan = document.getElementById('bulan').value.trim();
   const tanggal = document.getElementById('f_tanggal').value;
   const desk = document.getElementById('f_desk').value;
-  const foto = document.getElementById('box_foto').dataset.img || '';
+  const st = document.getElementById('addStatus');
+  const btn = document.getElementById('btnTambah');
+  if(!nama || !bulan){ alert('Isi Nama Pegawai dan Bulan di Kop Laporan dulu, lalu klik "Muat Data".'); return; }
   if(!tanggal || !desk){ alert('Mohon isi tanggal dan uraian kegiatan.'); return; }
+  btn.disabled = true;
   try{
-    await dbAdd({tanggal, desk, foto});
-    await renderTable();
+    let fotoUrl = '';
+    if(pendingBlob){
+      st.textContent = 'Mengunggah foto...';
+      fotoUrl = await uploadToCloudinary(pendingBlob);
+    }
+    st.textContent = 'Menyimpan data...';
+    const { error } = await sb.from('kegiatan').insert({
+      nama_pegawai: nama, bulan: bulan, tanggal: tanggal, uraian: desk, foto_url: fotoUrl
+    });
+    if(error) throw error;
+    st.textContent = 'Tersimpan.';
     document.getElementById('f_desk').value='';
     document.getElementById('f_tanggal').value='';
     document.getElementById('box_foto').innerHTML='Tap untuk upload foto';
-    document.getElementById('box_foto').dataset.img='';
+    pendingBlob = null;
     setupFileBox();
-  }catch(e){ alert('Gagal menyimpan: '+e.message); }
+    await muatData();
+  }catch(e){
+    st.textContent='';
+    alert('Gagal menyimpan: '+e.message);
+  }finally{ btn.disabled = false; }
 }
 async function hapusBaris(id){
-  await dbDelete(id);
-  await renderTable();
+  try{
+    const { error } = await sb.from('kegiatan').delete().eq('id', id);
+    if(error) throw error;
+    await muatData();
+  }catch(e){ alert('Gagal menghapus: '+e.message); }
 }
 async function resetData(){
-  await dbClear();
-  await renderTable();
+  const nama = document.getElementById('nama').value.trim();
+  const bulan = document.getElementById('bulan').value.trim();
+  try{
+    const { error } = await sb.from('kegiatan').delete().eq('nama_pegawai', nama).eq('bulan', bulan);
+    if(error) throw error;
+    await muatData();
+  }catch(e){ alert('Gagal menghapus: '+e.message); }
 }
 function fmtTgl(t){
   if(!t) return '-';
   const d = new Date(t+'T00:00:00');
   return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
 }
-async function renderTable(){
-  const data = await dbGetAll();
-  document.getElementById('count').textContent = data.length;
-  document.getElementById('dbstat').textContent = data.length+' data tersimpan';
+function renderTable(){
+  document.getElementById('count').textContent = currentData.length;
   const holder = document.getElementById('tableHolder');
-  if(data.length===0){ holder.innerHTML = '<div class="empty">Belum ada data.</div>'; return; }
+  if(currentData.length===0){ holder.innerHTML = '<div class="empty">Belum ada data untuk Nama+Bulan ini.</div>'; return; }
   let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Dokumentasi Kegiatan</th><th>Uraian Kegiatan</th><th></th></tr></thead><tbody>';
-  data.forEach((d,i)=>{
+  currentData.forEach((d,i)=>{
     html += '<tr><td>'+(i+1)+'</td><td>'+fmtTgl(d.tanggal)+'</td>'
-      + '<td class="imgcell">'+(d.foto?'<img src="'+d.foto+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
-      + '<td class="desk">'+(d.desk||'')+'</td>'
+      + '<td class="imgcell">'+(d.foto_url?'<img src="'+d.foto_url+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
+      + '<td class="desk">'+(d.uraian||'')+'</td>'
       + '<td><button class="btn-danger" onclick="hapusBaris('+d.id+')">Hapus</button></td></tr>';
   });
   html += '</tbody></table>';
   holder.innerHTML = html;
 }
-renderTable();
 
 /* ---------- Export ke Word ---------- */
+async function imgUrlToDataUrl(url){
+  try{
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return await new Promise(resolve=>{
+      const reader = new FileReader();
+      reader.onload = ()=>resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  }catch(e){ return null; }
+}
 async function unduhWord(){
-  const data = await dbGetAll();
-  if(data.length===0){ alert('Belum ada data untuk diunduh.'); return; }
+  if(currentData.length===0){ alert('Belum ada data untuk diunduh. Klik "Muat Data" dulu.'); return; }
   const judul = document.getElementById('judul').value || 'LAPORAN KEGIATAN';
   const subjudul = document.getElementById('subjudul').value || '';
   const nama = document.getElementById('nama').value || '-';
@@ -270,14 +312,20 @@ async function unduhWord(){
   const ppkNip = document.getElementById('ppk_nip').value || '';
 
   let rows = '';
-  data.forEach((d,i)=>{
+  for(let i=0;i<currentData.length;i++){
+    const d = currentData[i];
+    let imgTag = '';
+    if(d.foto_url){
+      const dataUrl = await imgUrlToDataUrl(d.foto_url);
+      imgTag = dataUrl ? '<img src="'+dataUrl+'" style="max-width:180px;">' : '(foto tidak dapat dimuat)';
+    }
     rows += '<tr>'
       + '<td style="text-align:center;vertical-align:middle;">'+(i+1)+'</td>'
       + '<td style="text-align:center;vertical-align:middle;">'+fmtTgl(d.tanggal)+'</td>'
-      + '<td style="text-align:center;vertical-align:middle;">'+(d.foto?'<img src="'+d.foto+'" style="max-width:180px;">':'')+'</td>'
-      + '<td style="text-align:center;vertical-align:middle;">'+(d.desk||'')+'</td>'
+      + '<td style="text-align:center;vertical-align:middle;">'+imgTag+'</td>'
+      + '<td style="text-align:center;vertical-align:middle;">'+(d.uraian||'')+'</td>'
       + '</tr>';
-  });
+  }
   const jadwalHtml = jadwal.length ? '<div style="text-align:right;font-size:10.5pt;">'+jadwal.join('<br>')+'</div>' : '';
 
   const fullHtml = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'
