@@ -495,7 +495,7 @@ async function unduhWord(){
     const PAGE_CONTENT_WIDTH = 9020; // twips, lebar isi halaman A4 (default docx.js) dikurangi margin 1 inci kanan-kiri
     const tabLine = (left, right) => new Paragraph({
       tabStops: [{ type: TabStopType.RIGHT, position: PAGE_CONTENT_WIDTH }],
-      children: [ new TextRun(left||''), new Tab(), new TextRun(right||'') ]
+      children: [ new TextRun(left||''), new TextRun({children:[new Tab()]}), new TextRun(right||'') ]
     });
     const jumlahBarisInfo = Math.max(2, jadwal.length);
     const infoLinesHalaman1 = [];
