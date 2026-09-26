@@ -142,7 +142,7 @@ const CONFIG = {
   SUPABASE_URL: "https://fhofuzatcixadptwtgvy.supabase.co",
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZob2Z1emF0Y2l4YWRwdHd0Z3Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjM2MDUsImV4cCI6MjEwNTkzOTYwNX0.ZgZyGLtXSLzZzKtqjfzyqmYktvJvUXRjCgT9Gr53nog",
   CLOUDINARY_CLOUD_NAME: "zw4vhash",
-  CLOUDINARY_UPLOAD_PRESET: "laporan_kegiatan",
+  CLOUDINARY_UPLOAD_PRESET: "laporan_kegiatan"
 };
 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let currentData = [];
@@ -484,16 +484,22 @@ async function unduhWord(){
 
     const jadwalParas = jadwal.map(j=> new Paragraph({ alignment: AlignmentType.RIGHT, children:[new TextRun(j)] }));
 
+    const SIG_COL_WIDTHS = [4675, 4675];
+    const sigCell = (children) => new TableCell({
+      children, verticalAlign: VerticalAlign.CENTER,
+      width: { size: 4675, type: WidthType.DXA }
+    });
     const sigTable = new Table({
       width:{ size:100, type:WidthType.PERCENTAGE },
+      columnWidths: SIG_COL_WIDTHS,
       borders:{ top:noBorder, bottom:noBorder, left:noBorder, right:noBorder, insideHorizontal:noBorder, insideVertical:noBorder },
       rows:[ new TableRow({ children:[
-        cell([
+        sigCell([
           p('Yang Membuat Laporan,'),
           new Paragraph(''), new Paragraph(''), new Paragraph(''), new Paragraph(''),
           p(nama, {underline:{}})
         ]),
-        cell([
+        sigCell([
           p('Mengetahui,'), p((ppkJabatan||'PPK')+','),
           new Paragraph(''), new Paragraph(''), new Paragraph(''),
           p(ppkNama||' ', {underline:{}}),
