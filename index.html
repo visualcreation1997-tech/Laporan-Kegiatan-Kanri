@@ -40,6 +40,10 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
 .small{font-size:.75rem;color:var(--muted);}
 .status{font-size:.78rem;color:var(--accent);}
 .warn{background:#fff3cd;color:#7a5b00;border:1px solid #ffe08a;border-radius:8px;padding:10px 12px;font-size:.8rem;margin-bottom:16px;}
+.chip-list{display:flex;flex-wrap:wrap;gap:8px;}
+.chip{background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:7px 14px;font-size:.82rem;cursor:pointer;color:var(--text);}
+.chip:hover{border-color:var(--accent);color:var(--accent);}
+.chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
 :root[data-theme="dark"] .warn,@media(prefers-color-scheme:dark){.warn{background:#3a2f0a;color:#f0d27a;border-color:#5a4a15;}}
 </style>
 </head>
@@ -97,6 +101,12 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     </div>
   </div>
 
+  <div class="card" id="adminNamaCard" style="display:none">
+    <strong>Daftar Pegawai (Admin)</strong>
+    <div class="small" style="margin:4px 0 10px">Klik salah satu nama untuk melihat & mengunduh laporan kegiatannya (untuk Bulan yang sedang diisi di atas).</div>
+    <div id="adminNamaList" class="small">Memuat...</div>
+  </div>
+
   <div class="card">
     <strong>Daftar Kegiatan (<span id="count">0</span>)</strong>
     <div class="tbl-wrap" id="tableHolder"><div class="empty">Isi Nama & Bulan lalu klik "Muat Data".</div></div>
@@ -124,25 +134,44 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
    KONFIGURASI - ISI SEBELUM DEPLOY (lihat langkah setup)
    ========================================================= */
 const CONFIG = {
-  SUPABASE_URL: "https://fhofuzatcixadptwtgvy.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZob2Z1emF0Y2l4YWRwdHd0Z3Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjM2MDUsImV4cCI6MjEwNTkzOTYwNX0.ZgZyGLtXSLzZzKtqjfzyqmYktvJvUXRjCgT9Gr53nog",
-  CLOUDINARY_CLOUD_NAME: "zw4vhash",
-  CLOUDINARY_UPLOAD_PRESET: "laporan_kegiatan",
+  SUPABASE_URL: "ISI_SUPABASE_PROJECT_URL",
+  SUPABASE_ANON_KEY: "ISI_SUPABASE_ANON_PUBLIC_KEY",
+  CLOUDINARY_CLOUD_NAME: "ISI_CLOUDINARY_CLOUD_NAME",
+  CLOUDINARY_UPLOAD_PRESET: "ISI_CLOUDINARY_UPLOAD_PRESET_UNSIGNED"
 };
 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let currentData = [];
 let isAdmin = false;
 
-/* ---------- (Admin) Muat daftar nama pegawai untuk autocomplete ---------- */
+/* ---------- (Admin) Muat daftar nama pegawai: autocomplete + daftar tombol klik ---------- */
 async function loadNamaList(){
   if(!isAdmin) return;
+  const card = document.getElementById('adminNamaCard');
+  const holder = document.getElementById('adminNamaList');
+  card.style.display = 'block';
   try{
     const { data, error } = await sb.from('kegiatan').select('nama_pegawai');
     if(error) throw error;
     const names = [...new Set((data||[]).map(d=>d.nama_pegawai).filter(Boolean))].sort();
     const dl = document.getElementById('namaListOptions');
     dl.innerHTML = names.map(n=>'<option value="'+n.replace(/"/g,'&quot;')+'">').join('');
-  }catch(e){ console.warn('Gagal memuat daftar nama:', e.message); }
+    if(names.length===0){ holder.innerHTML = '<span class="small">Belum ada data kegiatan sama sekali.</span>'; return; }
+    const namaAktif = document.getElementById('nama').value.trim();
+    holder.innerHTML = '<div class="chip-list">'+names.map(n=>
+      '<button type="button" class="chip'+(n===namaAktif?' active':'')+'" onclick="pilihPegawai(this,\''+n.replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\')">'+n+'</button>'
+    ).join('')+'</div>';
+  }catch(e){
+    holder.innerHTML = '<span class="small">Gagal memuat daftar nama: '+e.message+'</span>';
+  }
+}
+async function pilihPegawai(btn, nama){
+  document.querySelectorAll('#adminNamaList .chip').forEach(c=>c.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.getElementById('nama').value = nama;
+  saveInfo();
+  const bulan = document.getElementById('bulan').value.trim();
+  if(!bulan){ alert('Isi Bulan dulu (di atas), baru pilih nama pegawai.'); return; }
+  await muatData();
 }
 
 /* ---------- Login / sesi ---------- */
@@ -223,7 +252,10 @@ async function muatData(){
     // Filter nama_pegawai di bawah membuat laporan yang tampil/di-print selalu per satu orang,
     // termasuk saat admin sedang melihat data banyak pegawai untuk bulan yang sama.
     let query = sb.from('kegiatan').select('*').eq('bulan', bulan).order('tanggal', {ascending:true});
-    if(nama) query = query.eq('nama_pegawai', nama);
+    // Filter nama hanya dipakai untuk admin (yang bisa lihat banyak pegawai sekaligus).
+    // Pegawai biasa sudah otomatis dibatasi RLS ke datanya sendiri, jadi tidak perlu difilter nama
+    // (menghindari kasus nama di kop laporan beda teks dengan nama_pegawai yang tersimpan).
+    if(isAdmin && nama) query = query.eq('nama_pegawai', nama);
     const { data, error } = await query;
     if(error) throw error;
     currentData = data || [];
@@ -425,16 +457,16 @@ async function unduhWord(){
       borders:{ top:noBorder, bottom:noBorder, left:noBorder, right:noBorder, insideHorizontal:noBorder, insideVertical:noBorder },
       rows:[ new TableRow({ children:[
         cell([
+          p('Yang Membuat Laporan,'),
+          new Paragraph(''), new Paragraph(''), new Paragraph(''), new Paragraph(''),
+          p(nama, {underline:{}})
+        ]),
+        cell([
           p('Mengetahui,'), p((ppkJabatan||'PPK')+','),
           new Paragraph(''), new Paragraph(''), new Paragraph(''),
           p(ppkNama||' ', {underline:{}}),
           ...(ppkJabatan?[p(ppkJabatan)]:[]),
           ...(ppkNip?[p('NIP. '+ppkNip)]:[])
-        ]),
-        cell([
-          p('Yang Membuat Laporan,'),
-          new Paragraph(''), new Paragraph(''), new Paragraph(''), new Paragraph(''),
-          p(nama, {underline:{}})
         ]),
       ]})]
     });
