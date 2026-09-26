@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Laporan Kegiatan Harian</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx@9.5.1/build/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@9.5.1/build/index.umd.js"></script>
 <style>
 :root{--bg:#f5f6f8;--card:#fff;--text:#1c1f26;--muted:#6b7280;--accent:#2563eb;--accent-d:#1d4ed8;--border:#e2e5ea;--danger:#dc2626;}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#14161a;--card:#1e2127;--text:#e8e9ec;--muted:#9aa0aa;--accent:#3b82f6;--accent-d:#60a5fa;--border:#2c3038;}}
@@ -124,10 +124,10 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
    KONFIGURASI - ISI SEBELUM DEPLOY (lihat langkah setup)
    ========================================================= */
 const CONFIG = {
-  SUPABASE_URL: "https://fhofuzatcixadptwtgvy.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZob2Z1emF0Y2l4YWRwdHd0Z3Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjM2MDUsImV4cCI6MjEwNTkzOTYwNX0.ZgZyGLtXSLzZzKtqjfzyqmYktvJvUXRjCgT9Gr53nog",
-  CLOUDINARY_CLOUD_NAME: "zw4vhash",
-  CLOUDINARY_UPLOAD_PRESET: "laporan_kegiatan"
+  SUPABASE_URL: "ISI_SUPABASE_PROJECT_URL",
+  SUPABASE_ANON_KEY: "ISI_SUPABASE_ANON_PUBLIC_KEY",
+  CLOUDINARY_CLOUD_NAME: "ISI_CLOUDINARY_CLOUD_NAME",
+  CLOUDINARY_UPLOAD_PRESET: "ISI_CLOUDINARY_UPLOAD_PRESET_UNSIGNED"
 };
 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let currentData = [];
@@ -335,25 +335,30 @@ function renderTable(){
 /* ---------- Export ke Word (docx.js - gambar tertanam biner, andal) ---------- */
 async function unduhWord(){
   if(currentData.length===0){ alert('Belum ada data untuk diunduh. Klik "Muat Data" dulu.'); return; }
-  const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, ImageRun,
-          WidthType, AlignmentType, VerticalAlign, BorderStyle, HeadingLevel } = docx;
-
-  const judul = document.getElementById('judul').value || 'LAPORAN KEGIATAN';
-  const subjudul = document.getElementById('subjudul').value || '';
-  const nama = document.getElementById('nama').value || '-';
-  const bulan = document.getElementById('bulan').value || '-';
-  const jadwal = (document.getElementById('jadwal').value || '').split('\n').filter(x=>x.trim()!=='');
-  const ppkNama = document.getElementById('ppk_nama').value || '';
-  const ppkJabatan = document.getElementById('ppk_jabatan').value || '';
-  const ppkNip = document.getElementById('ppk_nip').value || '';
-
-  const btn = document.querySelector('button[onclick="unduhWord()"]');
-  if(btn) btn.disabled = true;
-  const noBorder = { style: BorderStyle.NONE, size:0, color:"FFFFFF" };
-  const cell = (children, opts={}) => new TableCell({ children, verticalAlign: VerticalAlign.CENTER, ...opts });
-  const p = (text, opts={}) => new Paragraph({ children:[new TextRun({text, ...opts})], alignment: opts.alignment||AlignmentType.CENTER });
-
+  if(typeof docx === 'undefined'){
+    alert('Library pembuat Word (docx.js) gagal dimuat dari internet. Cek koneksi internet Anda lalu coba lagi. Kalau masih gagal, beri tahu Claude.');
+    return;
+  }
+  let judul, subjudul, nama, bulan, jadwal, ppkNama, ppkJabatan, ppkNip, btn;
   try{
+    const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, ImageRun,
+            WidthType, AlignmentType, VerticalAlign, BorderStyle, HeadingLevel } = docx;
+
+    judul = document.getElementById('judul').value || 'LAPORAN KEGIATAN';
+    subjudul = document.getElementById('subjudul').value || '';
+    nama = document.getElementById('nama').value || '-';
+    bulan = document.getElementById('bulan').value || '-';
+    jadwal = (document.getElementById('jadwal').value || '').split('\n').filter(x=>x.trim()!=='');
+    ppkNama = document.getElementById('ppk_nama').value || '';
+    ppkJabatan = document.getElementById('ppk_jabatan').value || '';
+    ppkNip = document.getElementById('ppk_nip').value || '';
+
+    btn = document.querySelector('button[onclick="unduhWord()"]');
+    if(btn) btn.disabled = true;
+    const noBorder = { style: BorderStyle.NONE, size:0, color:"FFFFFF" };
+    const cell = (children, opts={}) => new TableCell({ children, verticalAlign: VerticalAlign.CENTER, ...opts });
+    const p = (text, opts={}) => new Paragraph({ children:[new TextRun({text, ...opts})], alignment: opts.alignment||AlignmentType.CENTER });
+
     const headerRow = new TableRow({ children:[
       cell([p('No', {bold:true})]),
       cell([p('Tanggal', {bold:true})]),
