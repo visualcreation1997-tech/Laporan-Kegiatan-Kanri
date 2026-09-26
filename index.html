@@ -483,11 +483,24 @@ async function unduhWord(){
     });
     const p = (text, opts={}) => new Paragraph({ children:[new TextRun({text, ...opts})], alignment: opts.alignment||AlignmentType.CENTER });
 
-    const headerRow = new TableRow({ children:[
+    const headerRow = new TableRow({ tableHeader:true, children:[
       cell([p('No', {bold:true})], 0),
       cell([p('Tanggal', {bold:true})], 1),
       cell([p('Dokumentasi Kegiatan', {bold:true})], 2),
       cell([p('Uraian Kegiatan', {bold:true})], 3),
+    ]});
+
+    // Baris info Nama/Bulan/Jadwal — ditandai tableHeader:true supaya Word mengulanginya
+    // di bagian atas setiap halaman baru, bukan cuma muncul sekali di halaman pertama.
+    const jadwalParas = jadwal.length
+      ? jadwal.map(j=> new Paragraph({ alignment: AlignmentType.RIGHT, children:[new TextRun(j)] }))
+      : [new Paragraph('')];
+    const infoRow = new TableRow({ tableHeader:true, children:[
+      new TableCell({
+        children:[ p('Nama : '+nama, {alignment:AlignmentType.LEFT}), p('Bulan : '+bulan, {alignment:AlignmentType.LEFT}) ],
+        columnSpan: 3, verticalAlign: VerticalAlign.CENTER
+      }),
+      new TableCell({ children: jadwalParas, verticalAlign: VerticalAlign.CENTER }),
     ]});
 
     const dataRows = [];
@@ -514,10 +527,8 @@ async function unduhWord(){
     const mainTable = new Table({
       width:{ size:100, type:WidthType.PERCENTAGE },
       columnWidths: COL_WIDTHS,
-      rows:[headerRow, ...dataRows]
+      rows:[infoRow, headerRow, ...dataRows]
     });
-
-    const jadwalParas = jadwal.map(j=> new Paragraph({ alignment: AlignmentType.RIGHT, children:[new TextRun(j)] }));
 
     const SIG_COL_WIDTHS = [4675, 4675];
     const sigCell = (children) => new TableCell({
@@ -547,9 +558,6 @@ async function unduhWord(){
     const doc = new Document({ sections:[{ children:[
       new Paragraph({ alignment: AlignmentType.CENTER, children:[new TextRun({text:judul, bold:true, size:28})] }),
       ...(subjudul?[new Paragraph({ alignment: AlignmentType.CENTER, children:[new TextRun({text:subjudul, size:22})] })]:[]),
-      new Paragraph({ children:[new TextRun('Nama : '+nama)] }),
-      new Paragraph({ children:[new TextRun('Bulan : '+bulan)] }),
-      ...jadwalParas,
       new Paragraph(''),
       mainTable,
       new Paragraph(''), new Paragraph(''),
