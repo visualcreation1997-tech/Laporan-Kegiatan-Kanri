@@ -46,7 +46,23 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
 <div class="wrap">
   <h1>📋 Laporan Kegiatan Harian</h1>
   <div class="sub">Foto disimpan di Cloudinary, data tersimpan pusat di Supabase — bisa diakses dari perangkat manapun.</div>
-  <div class="warn">⚠️ Versi ini belum pakai login/otorisasi. Siapa pun yang punya link bisa menambah/menghapus data. Cocok untuk pemakaian internal terbatas; tambahkan Supabase Auth kalau perlu diperketat.</div>
+  <div class="card" id="loginCard">
+    <strong>Login</strong>
+    <label>Username</label>
+    <input id="login_user" type="text" placeholder="Contoh: Kanri001">
+    <label>Password</label>
+    <input id="login_pass" type="password" placeholder="Password">
+    <div class="row-actions">
+      <button class="btn-primary" onclick="doLogin()">Masuk</button>
+      <span class="status" id="loginStatus"></span>
+    </div>
+  </div>
+
+  <div id="appContent" style="display:none">
+  <div class="row-actions" style="justify-content:flex-end;">
+    <span class="status" id="whoami"></span>
+    <button class="btn-ghost" onclick="doLogout()">Keluar</button>
+  </div>
 
   <div class="card">
     <strong>Kop Laporan</strong>
@@ -99,6 +115,7 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     <button class="btn-primary" onclick="unduhWord()">⬇️ Unduh sebagai Word (.docx)</button>
     <button class="btn-ghost" onclick="if(confirm('Hapus semua data Nama+Bulan ini dari server?'))resetData()">Hapus Semua (bulan ini)</button>
   </div>
+  </div>
 </div>
 
 <script>
@@ -106,13 +123,44 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
    KONFIGURASI - ISI SEBELUM DEPLOY (lihat langkah setup)
    ========================================================= */
 const CONFIG = {
-  SUPABASE_URL: "https://fhofuzatcixadptwtgvy.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZob2Z1emF0Y2l4YWRwdHd0Z3Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjM2MDUsImV4cCI6MjEwNTkzOTYwNX0.ZgZyGLtXSLzZzKtqjfzyqmYktvJvUXRjCgT9Gr53nog",
-  CLOUDINARY_CLOUD_NAME: "zw4vhash",
-  CLOUDINARY_UPLOAD_PRESET: "laporan_kegiatan"
+  SUPABASE_URL: "ISI_SUPABASE_PROJECT_URL",
+  SUPABASE_ANON_KEY: "ISI_SUPABASE_ANON_PUBLIC_KEY",
+  CLOUDINARY_CLOUD_NAME: "ISI_CLOUDINARY_CLOUD_NAME",
+  CLOUDINARY_UPLOAD_PRESET: "ISI_CLOUDINARY_UPLOAD_PRESET_UNSIGNED"
 };
 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let currentData = [];
+
+/* ---------- Login / sesi ---------- */
+async function doLogin(){
+  const user = document.getElementById('login_user').value.trim();
+  const pass = document.getElementById('login_pass').value;
+  const st = document.getElementById('loginStatus');
+  if(!user || !pass){ alert('Isi username dan password.'); return; }
+  st.textContent = 'Memproses...';
+  const email = user.toLowerCase()+'@laporan.internal';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if(error){ st.textContent=''; alert('Login gagal: usernama atau password salah.'); return; }
+  st.textContent = '';
+  await showApp();
+}
+async function doLogout(){
+  await sb.auth.signOut();
+  location.reload();
+}
+async function showApp(){
+  document.getElementById('loginCard').style.display='none';
+  document.getElementById('appContent').style.display='block';
+  const { data:{ user } } = await sb.auth.getUser();
+  const uname = user?.user_metadata?.username || '';
+  document.getElementById('whoami').textContent = uname ? ('Masuk sebagai '+uname) : '';
+  if(uname && !document.getElementById('nama').value) document.getElementById('nama').value = uname;
+  if(document.getElementById('bulan').value) muatData();
+}
+window.addEventListener('load', async ()=>{
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session) showApp();
+});
 
 /* ---------- Info kop laporan (localStorage, ringan) ---------- */
 try{
@@ -149,26 +197,23 @@ function saveInfo(){
 /* ---------- Muat data dari Supabase berdasar Nama+Bulan ---------- */
 async function muatData(){
   saveInfo();
-  const nama = document.getElementById('nama').value.trim();
   const bulan = document.getElementById('bulan').value.trim();
   const st = document.getElementById('loadStatus');
-  if(!nama || !bulan){ alert('Isi Nama Pegawai dan Bulan dulu.'); return; }
+  if(!bulan){ alert('Isi Bulan dulu.'); return; }
   st.textContent = 'Memuat...';
   try{
+    // Catatan: RLS di database sudah otomatis membatasi hasil hanya milik akun yang sedang login.
     const { data, error } = await sb.from('kegiatan').select('*')
-      .eq('nama_pegawai', nama).eq('bulan', bulan).order('tanggal', {ascending:true});
+      .eq('bulan', bulan).order('tanggal', {ascending:true});
     if(error) throw error;
     currentData = data || [];
     renderTable();
     st.textContent = currentData.length+' data dimuat dari server.';
   }catch(e){
     st.textContent = '';
-    alert('Gagal memuat data: '+e.message+'\\nPastikan CONFIG (Supabase URL/key) sudah benar diisi.');
+    alert('Gagal memuat data: '+e.message);
   }
 }
-window.addEventListener('load', ()=>{
-  if(document.getElementById('nama').value && document.getElementById('bulan').value) muatData();
-});
 
 /* ---------- Upload & kompres foto, lalu unggah ke Cloudinary ---------- */
 let pendingBlob = null;
@@ -224,7 +269,7 @@ async function tambahData(){
   const desk = document.getElementById('f_desk').value;
   const st = document.getElementById('addStatus');
   const btn = document.getElementById('btnTambah');
-  if(!nama || !bulan){ alert('Isi Nama Pegawai dan Bulan di Kop Laporan dulu, lalu klik "Muat Data".'); return; }
+  if(!bulan){ alert('Isi Bulan di Kop Laporan dulu, lalu klik "Muat Data".'); return; }
   if(!tanggal || !desk){ alert('Mohon isi tanggal dan uraian kegiatan.'); return; }
   btn.disabled = true;
   try{
@@ -258,10 +303,9 @@ async function hapusBaris(id){
   }catch(e){ alert('Gagal menghapus: '+e.message); }
 }
 async function resetData(){
-  const nama = document.getElementById('nama').value.trim();
   const bulan = document.getElementById('bulan').value.trim();
   try{
-    const { error } = await sb.from('kegiatan').delete().eq('nama_pegawai', nama).eq('bulan', bulan);
+    const { error } = await sb.from('kegiatan').delete().eq('bulan', bulan);
     if(error) throw error;
     await muatData();
   }catch(e){ alert('Gagal menghapus: '+e.message); }
