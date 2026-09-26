@@ -72,7 +72,7 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     <label>Sub Judul / Nama Kegiatan</label>
     <input id="subjudul" type="text" placeholder="Contoh: Belanja Jasa Untuk Tenaga Kebersihan (Satgas)">
     <div class="grid2">
-      <div><label>Nama Pegawai</label><input id="nama" type="text" placeholder="Nama lengkap"></div>
+      <div><label>Nama Pegawai</label><input id="nama" type="text" placeholder="Nama lengkap" list="namaListOptions"><datalist id="namaListOptions"></datalist></div>
       <div><label>Bulan</label><input id="bulan" type="text" placeholder="Contoh: September 2026"></div>
     </div>
     <label>Jadwal Jam Kerja (opsional)</label>
@@ -124,13 +124,26 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
    KONFIGURASI - ISI SEBELUM DEPLOY (lihat langkah setup)
    ========================================================= */
 const CONFIG = {
-  SUPABASE_URL: "https://fhofuzatcixadptwtgvy.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZob2Z1emF0Y2l4YWRwdHd0Z3Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjM2MDUsImV4cCI6MjEwNTkzOTYwNX0.ZgZyGLtXSLzZzKtqjfzyqmYktvJvUXRjCgT9Gr53nog",
-  CLOUDINARY_CLOUD_NAME: "zw4vhash",
-  CLOUDINARY_UPLOAD_PRESET: "laporan_kegiatan",
+  SUPABASE_URL: "ISI_SUPABASE_PROJECT_URL",
+  SUPABASE_ANON_KEY: "ISI_SUPABASE_ANON_PUBLIC_KEY",
+  CLOUDINARY_CLOUD_NAME: "ISI_CLOUDINARY_CLOUD_NAME",
+  CLOUDINARY_UPLOAD_PRESET: "ISI_CLOUDINARY_UPLOAD_PRESET_UNSIGNED"
 };
 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let currentData = [];
+let isAdmin = false;
+
+/* ---------- (Admin) Muat daftar nama pegawai untuk autocomplete ---------- */
+async function loadNamaList(){
+  if(!isAdmin) return;
+  try{
+    const { data, error } = await sb.from('kegiatan').select('nama_pegawai');
+    if(error) throw error;
+    const names = [...new Set((data||[]).map(d=>d.nama_pegawai).filter(Boolean))].sort();
+    const dl = document.getElementById('namaListOptions');
+    dl.innerHTML = names.map(n=>'<option value="'+n.replace(/"/g,'&quot;')+'">').join('');
+  }catch(e){ console.warn('Gagal memuat daftar nama:', e.message); }
+}
 
 /* ---------- Login / sesi ---------- */
 async function doLogin(){
@@ -154,8 +167,10 @@ async function showApp(){
   document.getElementById('appContent').style.display='block';
   const { data:{ user } } = await sb.auth.getUser();
   const uname = user?.user_metadata?.username || '';
-  document.getElementById('whoami').textContent = uname ? ('Masuk sebagai '+uname) : '';
+  isAdmin = user?.app_metadata?.role === 'admin';
+  document.getElementById('whoami').textContent = uname ? ('Masuk sebagai '+uname+(isAdmin?' (Admin)':'')) : '';
   if(uname && !document.getElementById('nama').value) document.getElementById('nama').value = uname;
+  if(isAdmin) await loadNamaList();
   if(document.getElementById('bulan').value) muatData();
 }
 window.addEventListener('load', async ()=>{
@@ -199,13 +214,17 @@ function saveInfo(){
 async function muatData(){
   saveInfo();
   const bulan = document.getElementById('bulan').value.trim();
+  const nama = document.getElementById('nama').value.trim();
   const st = document.getElementById('loadStatus');
   if(!bulan){ alert('Isi Bulan dulu.'); return; }
   st.textContent = 'Memuat...';
   try{
-    // Catatan: RLS di database sudah otomatis membatasi hasil hanya milik akun yang sedang login.
-    const { data, error } = await sb.from('kegiatan').select('*')
-      .eq('bulan', bulan).order('tanggal', {ascending:true});
+    // Catatan: RLS membatasi hasil hanya milik akun yang login, kecuali akun admin (bisa lihat semua).
+    // Filter nama_pegawai di bawah membuat laporan yang tampil/di-print selalu per satu orang,
+    // termasuk saat admin sedang melihat data banyak pegawai untuk bulan yang sama.
+    let query = sb.from('kegiatan').select('*').eq('bulan', bulan).order('tanggal', {ascending:true});
+    if(nama) query = query.eq('nama_pegawai', nama);
+    const { data, error } = await query;
     if(error) throw error;
     currentData = data || [];
     renderTable();
@@ -356,14 +375,20 @@ async function unduhWord(){
     btn = document.querySelector('button[onclick="unduhWord()"]');
     if(btn) btn.disabled = true;
     const noBorder = { style: BorderStyle.NONE, size:0, color:"FFFFFF" };
-    const cell = (children, opts={}) => new TableCell({ children, verticalAlign: VerticalAlign.CENTER, ...opts });
+    // Lebar kolom tetap (dalam DXA/twips, 1440 = 1 inci). Total ~9350 dxa = lebar halaman Letter dikurangi margin 1 inci kanan-kiri.
+    const COL_WIDTHS = [700, 1500, 3200, 3950];
+    const cell = (children, colIdx, opts={}) => new TableCell({
+      children, verticalAlign: VerticalAlign.CENTER,
+      width: { size: COL_WIDTHS[colIdx], type: WidthType.DXA },
+      ...opts
+    });
     const p = (text, opts={}) => new Paragraph({ children:[new TextRun({text, ...opts})], alignment: opts.alignment||AlignmentType.CENTER });
 
     const headerRow = new TableRow({ children:[
-      cell([p('No', {bold:true})]),
-      cell([p('Tanggal', {bold:true})]),
-      cell([p('Dokumentasi Kegiatan', {bold:true})]),
-      cell([p('Uraian Kegiatan', {bold:true})]),
+      cell([p('No', {bold:true})], 0),
+      cell([p('Tanggal', {bold:true})], 1),
+      cell([p('Dokumentasi Kegiatan', {bold:true})], 2),
+      cell([p('Uraian Kegiatan', {bold:true})], 3),
     ]});
 
     const dataRows = [];
@@ -380,15 +405,16 @@ async function unduhWord(){
         }catch(e){ imgPara = p('(foto gagal dimuat)'); }
       } else { imgPara = p('-'); }
       dataRows.push(new TableRow({ children:[
-        cell([p(String(i+1))]),
-        cell([p(fmtTgl(d.tanggal))]),
-        cell([imgPara]),
-        cell([new Paragraph({ children:[new TextRun(d.uraian||'')] })]),
+        cell([p(String(i+1))], 0),
+        cell([p(fmtTgl(d.tanggal))], 1),
+        cell([imgPara], 2),
+        cell([new Paragraph({ children:[new TextRun(d.uraian||'')] })], 3),
       ]}));
     }
 
     const mainTable = new Table({
       width:{ size:100, type:WidthType.PERCENTAGE },
+      columnWidths: COL_WIDTHS,
       rows:[headerRow, ...dataRows]
     });
 
