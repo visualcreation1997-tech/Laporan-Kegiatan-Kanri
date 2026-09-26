@@ -120,6 +120,11 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     </div>
     <label>NIP PPK</label>
     <input id="ppk_nip" type="text" placeholder="Contoh: 19801009 199912 1 002">
+    <div class="row-actions" id="ppkSaveRow" style="display:none">
+      <button class="btn-ghost" onclick="simpanPPKInfo()">💾 Simpan Info PPK (berlaku di semua device)</button>
+      <span class="status" id="ppkStatus"></span>
+    </div>
+    <div class="small" id="ppkNonAdminNote" style="margin-top:8px;display:none">Info PPK ini diatur oleh admin dan berlaku otomatis di semua device.</div>
   </div>
 
   <div class="row-actions">
@@ -134,10 +139,10 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
    KONFIGURASI - ISI SEBELUM DEPLOY (lihat langkah setup)
    ========================================================= */
 const CONFIG = {
-  SUPABASE_URL: "https://fhofuzatcixadptwtgvy.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZob2Z1emF0Y2l4YWRwdHd0Z3Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjM2MDUsImV4cCI6MjEwNTkzOTYwNX0.ZgZyGLtXSLzZzKtqjfzyqmYktvJvUXRjCgT9Gr53nog",
-  CLOUDINARY_CLOUD_NAME: "zw4vhash",
-  CLOUDINARY_UPLOAD_PRESET: "laporan_kegiatan",
+  SUPABASE_URL: "ISI_SUPABASE_PROJECT_URL",
+  SUPABASE_ANON_KEY: "ISI_SUPABASE_ANON_PUBLIC_KEY",
+  CLOUDINARY_CLOUD_NAME: "ISI_CLOUDINARY_CLOUD_NAME",
+  CLOUDINARY_UPLOAD_PRESET: "ISI_CLOUDINARY_UPLOAD_PRESET_UNSIGNED"
 };
 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let currentData = [];
@@ -199,6 +204,10 @@ async function showApp(){
   isAdmin = user?.app_metadata?.role === 'admin';
   document.getElementById('whoami').textContent = uname ? ('Masuk sebagai '+uname+(isAdmin?' (Admin)':'')) : '';
   if(uname && !document.getElementById('nama').value) document.getElementById('nama').value = uname;
+  document.getElementById('ppkSaveRow').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('ppkNonAdminNote').style.display = isAdmin ? 'none' : 'block';
+  ['ppk_nama','ppk_jabatan','ppk_nip'].forEach(id=>document.getElementById(id).disabled = !isAdmin);
+  await loadPPKInfo();
   if(isAdmin) await loadNamaList();
   if(document.getElementById('bulan').value) muatData();
 }
@@ -217,9 +226,6 @@ try{
     document.getElementById('nama').value = o.nama||'';
     document.getElementById('bulan').value = o.bulan||'';
     document.getElementById('jadwal').value = o.jadwal||'';
-    document.getElementById('ppk_nama').value = o.ppk_nama||'';
-    document.getElementById('ppk_jabatan').value = o.ppk_jabatan||'';
-    document.getElementById('ppk_nip').value = o.ppk_nip||'';
   } else { document.getElementById('judul').value = 'LAPORAN KEGIATAN'; }
 }catch(e){ console.warn('load info gagal', e); }
 
@@ -230,14 +236,40 @@ function saveInfo(){
       subjudul: document.getElementById('subjudul').value,
       nama: document.getElementById('nama').value,
       bulan: document.getElementById('bulan').value,
-      jadwal: document.getElementById('jadwal').value,
-      ppk_nama: document.getElementById('ppk_nama').value,
-      ppk_jabatan: document.getElementById('ppk_jabatan').value,
-      ppk_nip: document.getElementById('ppk_nip').value
+      jadwal: document.getElementById('jadwal').value
     }));
   }catch(e){}
 }
-['judul','subjudul','nama','bulan','jadwal','ppk_nama','ppk_jabatan','ppk_nip'].forEach(id=>document.getElementById(id).addEventListener('input', saveInfo));
+['judul','subjudul','nama','bulan','jadwal'].forEach(id=>document.getElementById(id).addEventListener('input', saveInfo));
+
+/* ---------- Info PPK (tersimpan di Supabase, berlaku sama di semua device) ---------- */
+async function loadPPKInfo(){
+  try{
+    const { data, error } = await sb.from('pengaturan_ppk').select('*').eq('id', 1).maybeSingle();
+    if(error) throw error;
+    if(data){
+      document.getElementById('ppk_nama').value = data.ppk_nama || '';
+      document.getElementById('ppk_jabatan').value = data.ppk_jabatan || '';
+      document.getElementById('ppk_nip').value = data.ppk_nip || '';
+    }
+  }catch(e){ console.warn('Gagal memuat info PPK dari server:', e.message); }
+}
+async function simpanPPKInfo(){
+  const st = document.getElementById('ppkStatus');
+  const ppk_nama = document.getElementById('ppk_nama').value.trim();
+  const ppk_jabatan = document.getElementById('ppk_jabatan').value.trim();
+  const ppk_nip = document.getElementById('ppk_nip').value.trim();
+  st.textContent = 'Menyimpan...';
+  try{
+    const { error } = await sb.from('pengaturan_ppk').upsert({ id:1, ppk_nama, ppk_jabatan, ppk_nip, updated_at:new Date().toISOString() });
+    if(error) throw error;
+    st.textContent = 'Tersimpan untuk semua device.';
+    setTimeout(()=>{ if(st.textContent==='Tersimpan untuk semua device.') st.textContent=''; }, 3000);
+  }catch(e){
+    st.textContent = '';
+    alert('Gagal menyimpan info PPK: '+e.message);
+  }
+}
 
 /* ---------- Muat data dari Supabase berdasar Nama+Bulan ---------- */
 async function muatData(){
