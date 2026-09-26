@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Laporan Kegiatan Harian</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@9.5.1/build/index.js"></script>
 <style>
 :root{--bg:#f5f6f8;--card:#fff;--text:#1c1f26;--muted:#6b7280;--accent:#2563eb;--accent-d:#1d4ed8;--border:#e2e5ea;--danger:#dc2626;}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#14161a;--card:#1e2127;--text:#e8e9ec;--muted:#9aa0aa;--accent:#3b82f6;--accent-d:#60a5fa;--border:#2c3038;}}
@@ -123,10 +124,10 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
    KONFIGURASI - ISI SEBELUM DEPLOY (lihat langkah setup)
    ========================================================= */
 const CONFIG = {
-  SUPABASE_URL: "https://fhofuzatcixadptwtgvy.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZob2Z1emF0Y2l4YWRwdHd0Z3Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjM2MDUsImV4cCI6MjEwNTkzOTYwNX0.ZgZyGLtXSLzZzKtqjfzyqmYktvJvUXRjCgT9Gr53nog",
-  CLOUDINARY_CLOUD_NAME: "zw4vhash",
-  CLOUDINARY_UPLOAD_PRESET: "laporan_kegiatan"
+  SUPABASE_URL: "ISI_SUPABASE_PROJECT_URL",
+  SUPABASE_ANON_KEY: "ISI_SUPABASE_ANON_PUBLIC_KEY",
+  CLOUDINARY_CLOUD_NAME: "ISI_CLOUDINARY_CLOUD_NAME",
+  CLOUDINARY_UPLOAD_PRESET: "ISI_CLOUDINARY_UPLOAD_PRESET_UNSIGNED"
 };
 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let currentData = [];
@@ -286,7 +287,8 @@ async function tambahData(){
     st.textContent = 'Tersimpan.';
     document.getElementById('f_desk').value='';
     document.getElementById('f_tanggal').value='';
-    document.getElementById('box_foto').innerHTML='Tap untuk upload foto';
+    const box = document.getElementById('box_foto');
+    box.innerHTML = 'Tap untuk upload foto<input type="file" accept="image/*" id="f_foto" style="position:absolute;inset:0;opacity:0;cursor:pointer;">';
     pendingBlob = null;
     setupFileBox();
     await muatData();
@@ -330,20 +332,12 @@ function renderTable(){
   holder.innerHTML = html;
 }
 
-/* ---------- Export ke Word ---------- */
-async function imgUrlToDataUrl(url){
-  try{
-    const res = await fetch(url);
-    const blob = await res.blob();
-    return await new Promise(resolve=>{
-      const reader = new FileReader();
-      reader.onload = ()=>resolve(reader.result);
-      reader.readAsDataURL(blob);
-    });
-  }catch(e){ return null; }
-}
+/* ---------- Export ke Word (docx.js - gambar tertanam biner, andal) ---------- */
 async function unduhWord(){
   if(currentData.length===0){ alert('Belum ada data untuk diunduh. Klik "Muat Data" dulu.'); return; }
+  const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, ImageRun,
+          WidthType, AlignmentType, VerticalAlign, BorderStyle, HeadingLevel } = docx;
+
   const judul = document.getElementById('judul').value || 'LAPORAN KEGIATAN';
   const subjudul = document.getElementById('subjudul').value || '';
   const nama = document.getElementById('nama').value || '-';
@@ -353,52 +347,91 @@ async function unduhWord(){
   const ppkJabatan = document.getElementById('ppk_jabatan').value || '';
   const ppkNip = document.getElementById('ppk_nip').value || '';
 
-  let rows = '';
-  for(let i=0;i<currentData.length;i++){
-    const d = currentData[i];
-    let imgTag = '';
-    if(d.foto_url){
-      const dataUrl = await imgUrlToDataUrl(d.foto_url);
-      imgTag = dataUrl ? '<img src="'+dataUrl+'" style="max-width:180px;">' : '(foto tidak dapat dimuat)';
-    }
-    rows += '<tr>'
-      + '<td style="text-align:center;vertical-align:middle;">'+(i+1)+'</td>'
-      + '<td style="text-align:center;vertical-align:middle;">'+fmtTgl(d.tanggal)+'</td>'
-      + '<td style="text-align:center;vertical-align:middle;">'+imgTag+'</td>'
-      + '<td style="text-align:center;vertical-align:middle;">'+(d.uraian||'')+'</td>'
-      + '</tr>';
-  }
-  const jadwalHtml = jadwal.length ? '<div style="text-align:right;font-size:10.5pt;">'+jadwal.join('<br>')+'</div>' : '';
-
-  const fullHtml = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'
-    + '<head><meta charset="utf-8"><title>'+judul+'</title></head><body style="font-family:Calibri,Arial,sans-serif;">'
-    + '<div style="text-align:center;font-weight:bold;font-size:13pt;">'+judul+'</div>'
-    + (subjudul ? '<div style="text-align:center;font-size:11pt;margin-bottom:8px;">'+subjudul+'</div>' : '<div style="margin-bottom:8px;"></div>')
-    + '<table style="width:100%;border:none;"><tr>'
-    + '<td style="border:none;vertical-align:top;font-size:11pt;">Nama : '+nama+'<br>Bulan : '+bulan+'</td>'
-    + '<td style="border:none;vertical-align:top;">'+jadwalHtml+'</td>'
-    + '</tr></table>'
-    + '<table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:11pt;margin-top:8px;">'
-    + '<thead><tr style="background:#eee;"><th style="width:5%;">No</th><th style="width:12%;">Tanggal</th><th style="width:38%;">Dokumentasi Kegiatan</th><th>Uraian Kegiatan</th></tr></thead>'
-    + '<tbody>'+rows+'</tbody></table>'
-    + '<br><br>'
-    + '<table style="width:100%;border:none;"><tr>'
-    + '<td style="border:none;text-align:center;width:50%;">Mengetahui,<br>'+(ppkJabatan||'PPK')+',<br><br><br><br><u>'+(ppkNama||'&nbsp;')+'</u><br>'+(ppkJabatan?ppkJabatan+'<br>':'')+(ppkNip?'NIP. '+ppkNip:'')+'</td>'
-    + '<td style="border:none;text-align:center;width:50%;">Yang Membuat Laporan,<br><br><br><br><br><u>'+nama+'</u></td>'
-    + '</tr></table>'
-    + '</body></html>';
+  const btn = document.querySelector('button[onclick="unduhWord()"]');
+  if(btn) btn.disabled = true;
+  const noBorder = { style: BorderStyle.NONE, size:0, color:"FFFFFF" };
+  const cell = (children, opts={}) => new TableCell({ children, verticalAlign: VerticalAlign.CENTER, ...opts });
+  const p = (text, opts={}) => new Paragraph({ children:[new TextRun({text, ...opts})], alignment: opts.alignment||AlignmentType.CENTER });
 
   try{
-    const converted = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
-    const url = URL.createObjectURL(converted);
+    const headerRow = new TableRow({ children:[
+      cell([p('No', {bold:true})]),
+      cell([p('Tanggal', {bold:true})]),
+      cell([p('Dokumentasi Kegiatan', {bold:true})]),
+      cell([p('Uraian Kegiatan', {bold:true})]),
+    ]});
+
+    const dataRows = [];
+    for(let i=0;i<currentData.length;i++){
+      const d = currentData[i];
+      let imgPara;
+      if(d.foto_url){
+        try{
+          const res = await fetch(d.foto_url);
+          const buf = await res.arrayBuffer();
+          imgPara = new Paragraph({ alignment: AlignmentType.CENTER, children:[
+            new ImageRun({ data: buf, type:'jpg', transformation:{ width:160, height:120 } })
+          ]});
+        }catch(e){ imgPara = p('(foto gagal dimuat)'); }
+      } else { imgPara = p('-'); }
+      dataRows.push(new TableRow({ children:[
+        cell([p(String(i+1))]),
+        cell([p(fmtTgl(d.tanggal))]),
+        cell([imgPara]),
+        cell([new Paragraph({ children:[new TextRun(d.uraian||'')] })]),
+      ]}));
+    }
+
+    const mainTable = new Table({
+      width:{ size:100, type:WidthType.PERCENTAGE },
+      rows:[headerRow, ...dataRows]
+    });
+
+    const jadwalParas = jadwal.map(j=> new Paragraph({ alignment: AlignmentType.RIGHT, children:[new TextRun(j)] }));
+
+    const sigTable = new Table({
+      width:{ size:100, type:WidthType.PERCENTAGE },
+      borders:{ top:noBorder, bottom:noBorder, left:noBorder, right:noBorder, insideHorizontal:noBorder, insideVertical:noBorder },
+      rows:[ new TableRow({ children:[
+        cell([
+          p('Mengetahui,'), p((ppkJabatan||'PPK')+','),
+          new Paragraph(''), new Paragraph(''), new Paragraph(''),
+          p(ppkNama||' ', {underline:{}}),
+          ...(ppkJabatan?[p(ppkJabatan)]:[]),
+          ...(ppkNip?[p('NIP. '+ppkNip)]:[])
+        ]),
+        cell([
+          p('Yang Membuat Laporan,'),
+          new Paragraph(''), new Paragraph(''), new Paragraph(''), new Paragraph(''),
+          p(nama, {underline:{}})
+        ]),
+      ]})]
+    });
+
+    const doc = new Document({ sections:[{ children:[
+      new Paragraph({ alignment: AlignmentType.CENTER, children:[new TextRun({text:judul, bold:true, size:28})] }),
+      ...(subjudul?[new Paragraph({ alignment: AlignmentType.CENTER, children:[new TextRun({text:subjudul, size:22})] })]:[]),
+      new Paragraph({ children:[new TextRun('Nama : '+nama)] }),
+      new Paragraph({ children:[new TextRun('Bulan : '+bulan)] }),
+      ...jadwalParas,
+      new Paragraph(''),
+      mainTable,
+      new Paragraph(''), new Paragraph(''),
+      sigTable
+    ]}]});
+
+    const blob = await Packer.toBlob(doc);
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'Laporan_Kegiatan_'+(nama||'pegawai').replace(/\s+/g,'_')+'_'+(bulan||'').replace(/\s+/g,'_')+'.doc';
+    a.download = 'Laporan_Kegiatan_'+(nama||'pegawai').replace(/\s+/g,'_')+'_'+(bulan||'').replace(/\s+/g,'_')+'.docx';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }catch(e){ alert('Gagal membuat file Word: '+e.message); }
+  }catch(e){
+    alert('Gagal membuat file Word: '+e.message);
+  }finally{ if(btn) btn.disabled = false; }
 }
 </script>
 </body>
