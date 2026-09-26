@@ -17,7 +17,7 @@ h1{font-size:1.3rem;margin:0 0 4px;}
 .sub{color:var(--muted);font-size:.85rem;margin-bottom:18px;}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;}
 label{display:block;font-size:.8rem;color:var(--muted);margin:10px 0 4px;}
-input[type=text],input[type=date],textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.9rem;}
+input[type=text],input[type=date],textarea,select{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.9rem;}
 textarea{resize:vertical;min-height:50px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .file-box{border:1.5px dashed var(--border);border-radius:8px;padding:10px;text-align:center;font-size:.8rem;color:var(--muted);cursor:pointer;position:relative;overflow:hidden;min-height:80px;display:flex;align-items:center;justify-content:center;}
@@ -77,7 +77,12 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     <input id="subjudul" type="text" placeholder="Contoh: Belanja Jasa Untuk Tenaga Kebersihan (Satgas)">
     <div class="grid2">
       <div><label>Nama Pegawai</label><input id="nama" type="text" placeholder="Nama lengkap" list="namaListOptions"><datalist id="namaListOptions"></datalist></div>
-      <div><label>Bulan</label><input id="bulan" type="text" placeholder="Contoh: September 2026"></div>
+      <div><label>Bulan</label>
+        <div style="display:flex;gap:6px">
+          <select id="bulan_nama" onchange="saveInfo()" style="flex:1.3"></select>
+          <select id="bulan_tahun" onchange="saveInfo()" style="flex:1"></select>
+        </div>
+      </div>
     </div>
     <label>Jadwal Jam Kerja (opsional)</label>
     <textarea id="jadwal" placeholder="Senin - Kamis : 07.30 - 16.00&#10;Jumat : 07.30 - 16.30&#10;Sabtu/Minggu : 06.00 - 14.00"></textarea>
@@ -148,6 +153,36 @@ const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let currentData = [];
 let isAdmin = false;
 
+/* ---------- Dropdown Bulan (format selalu identik di semua device, tidak lagi rawan salah ketik) ---------- */
+const BULAN_NAMES = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+function initBulanSelects(){
+  const selNama = document.getElementById('bulan_nama');
+  const selTahun = document.getElementById('bulan_tahun');
+  selNama.innerHTML = BULAN_NAMES.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+  const nowYear = new Date().getFullYear();
+  let yearOpts = '';
+  for(let y=nowYear-1; y<=nowYear+2; y++) yearOpts += '<option value="'+y+'">'+y+'</option>';
+  selTahun.innerHTML = yearOpts;
+}
+initBulanSelects();
+function getBulan(){
+  return document.getElementById('bulan_nama').value+' '+document.getElementById('bulan_tahun').value;
+}
+function setBulan(str){
+  const parts = (str||'').trim().split(/\s+/);
+  if(parts.length<2) return;
+  const nm = parts[0], yr = parts[1];
+  if(BULAN_NAMES.includes(nm)) document.getElementById('bulan_nama').value = nm;
+  if(/^\d{4}$/.test(yr)){
+    const sel = document.getElementById('bulan_tahun');
+    if(![...sel.options].some(o=>o.value===yr)){
+      const opt = document.createElement('option'); opt.value = yr; opt.textContent = yr;
+      sel.appendChild(opt);
+    }
+    sel.value = yr;
+  }
+}
+
 /* ---------- (Admin) Muat daftar nama pegawai: autocomplete + daftar tombol klik ---------- */
 async function loadNamaList(){
   if(!isAdmin) return;
@@ -174,7 +209,7 @@ async function pilihPegawai(btn, nama){
   if(btn) btn.classList.add('active');
   document.getElementById('nama').value = nama;
   saveInfo();
-  const bulan = document.getElementById('bulan').value.trim();
+  const bulan = getBulan();
   if(!bulan){ alert('Isi Bulan dulu (di atas), baru pilih nama pegawai.'); return; }
   await muatData();
 }
@@ -209,7 +244,7 @@ async function showApp(){
   ['ppk_nama','ppk_jabatan','ppk_nip'].forEach(id=>document.getElementById(id).disabled = !isAdmin);
   await loadPPKInfo();
   if(isAdmin) await loadNamaList();
-  if(document.getElementById('bulan').value) muatData();
+  if(getBulan()) muatData();
 }
 window.addEventListener('load', async ()=>{
   const { data:{ session } } = await sb.auth.getSession();
@@ -224,7 +259,7 @@ try{
     document.getElementById('judul').value = o.judul||'LAPORAN KEGIATAN';
     document.getElementById('subjudul').value = o.subjudul||'';
     document.getElementById('nama').value = o.nama||'';
-    document.getElementById('bulan').value = o.bulan||'';
+    setBulan(o.bulan||'');
     document.getElementById('jadwal').value = o.jadwal||'';
   } else { document.getElementById('judul').value = 'LAPORAN KEGIATAN'; }
 }catch(e){ console.warn('load info gagal', e); }
@@ -235,12 +270,12 @@ function saveInfo(){
       judul: document.getElementById('judul').value,
       subjudul: document.getElementById('subjudul').value,
       nama: document.getElementById('nama').value,
-      bulan: document.getElementById('bulan').value,
+      bulan: getBulan(),
       jadwal: document.getElementById('jadwal').value
     }));
   }catch(e){}
 }
-['judul','subjudul','nama','bulan','jadwal'].forEach(id=>document.getElementById(id).addEventListener('input', saveInfo));
+['judul','subjudul','nama','jadwal'].forEach(id=>document.getElementById(id).addEventListener('input', saveInfo));
 
 /* ---------- Info PPK (tersimpan di Supabase, berlaku sama di semua device) ---------- */
 async function loadPPKInfo(){
@@ -274,10 +309,10 @@ async function simpanPPKInfo(){
 /* ---------- Muat data dari Supabase berdasar Nama+Bulan ---------- */
 async function muatData(){
   saveInfo();
-  const bulan = document.getElementById('bulan').value.trim();
+  const bulan = getBulan();
   const nama = document.getElementById('nama').value.trim();
   const st = document.getElementById('loadStatus');
-  if(!bulan){ alert('Isi Bulan dulu.'); return; }
+  if(!bulan){ alert('Pilih Bulan dulu.'); return; }
   st.textContent = 'Memuat...';
   try{
     // Catatan: RLS membatasi hasil hanya milik akun yang login, kecuali akun admin (bisa lihat semua).
@@ -348,12 +383,12 @@ async function uploadToCloudinary(blob){
 /* ---------- CRUD data kegiatan ---------- */
 async function tambahData(){
   const nama = document.getElementById('nama').value.trim();
-  const bulan = document.getElementById('bulan').value.trim();
+  const bulan = getBulan();
   const tanggal = document.getElementById('f_tanggal').value;
   const desk = document.getElementById('f_desk').value;
   const st = document.getElementById('addStatus');
   const btn = document.getElementById('btnTambah');
-  if(!bulan){ alert('Isi Bulan di Kop Laporan dulu, lalu klik "Muat Data".'); return; }
+  if(!bulan){ alert('Pilih Bulan di Kop Laporan dulu, lalu klik "Muat Data".'); return; }
   if(!tanggal || !desk){ alert('Mohon isi tanggal dan uraian kegiatan.'); return; }
   btn.disabled = true;
   try{
@@ -388,7 +423,7 @@ async function hapusBaris(id){
   }catch(e){ alert('Gagal menghapus: '+e.message); }
 }
 async function resetData(){
-  const bulan = document.getElementById('bulan').value.trim();
+  const bulan = getBulan();
   try{
     const { error } = await sb.from('kegiatan').delete().eq('bulan', bulan);
     if(error) throw error;
@@ -430,7 +465,7 @@ async function unduhWord(){
     judul = document.getElementById('judul').value || 'LAPORAN KEGIATAN';
     subjudul = document.getElementById('subjudul').value || '';
     nama = document.getElementById('nama').value || '-';
-    bulan = document.getElementById('bulan').value || '-';
+    bulan = getBulan() || '-';
     jadwal = (document.getElementById('jadwal').value || '').split('\n').filter(x=>x.trim()!=='');
     ppkNama = document.getElementById('ppk_nama').value || '';
     ppkJabatan = document.getElementById('ppk_jabatan').value || '';
