@@ -352,7 +352,7 @@ async function showApp(){
   const uname = user?.user_metadata?.username || '';
   isAdmin = user?.app_metadata?.role === 'admin';
   document.getElementById('whoami').textContent = uname ? ('Masuk sebagai '+uname+(isAdmin?' (Admin)':'')) : '';
-  if(uname && !document.getElementById('nama').value) document.getElementById('nama').value = NAMA_PEGAWAI_MAP[uname] || uname;
+  if(uname && !document.getElementById('nama').value && NAMA_PEGAWAI_MAP[uname]) document.getElementById('nama').value = NAMA_PEGAWAI_MAP[uname];
   document.getElementById('ppkSaveRow').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('ppkNonAdminNote').style.display = isAdmin ? 'none' : 'block';
   ['ppk_nama','ppk_jabatan','ppk_nip'].forEach(id=>document.getElementById(id).disabled = !isAdmin);
@@ -886,13 +886,28 @@ async function unduhWordHadir(){
     const mainTable = new Table({ width:{ size:100, type:WidthType.PERCENTAGE }, columnWidths: COL_WIDTHS, rows:[headerRow, ...dataRows] });
 
     // Sesuai permintaan: tanda tangan "Yang Membuat Laporan" dihapus, hanya "Mengetahui, PPK" saja.
-    const sigParas = [
-      p('Mengetahui,'), p((ppkJabatan||'PPK')+','),
-      new Paragraph(''), new Paragraph(''), new Paragraph(''),
-      p(ppkNama||' ', {underline:{}}),
-      ...(ppkJabatan?[p(ppkJabatan)]:[]),
-      ...(ppkNip?[p('NIP. '+ppkNip)]:[])
-    ];
+    // Dibungkus tabel 2 kolom tanpa border (sama seperti Laporan Kegiatan Harian) supaya blok PPK berada di sebelah kanan, bukan di tengah halaman.
+    const noBorder = { style: BorderStyle.NONE, size:0, color:"FFFFFF" };
+    const SIG_COL_WIDTHS = [4675, 4675];
+    const sigCell = (children) => new TableCell({
+      children, verticalAlign: VerticalAlign.CENTER,
+      width: { size: 4675, type: WidthType.DXA }
+    });
+    const sigTable = new Table({
+      width:{ size:100, type:WidthType.PERCENTAGE },
+      columnWidths: SIG_COL_WIDTHS,
+      borders:{ top:noBorder, bottom:noBorder, left:noBorder, right:noBorder, insideHorizontal:noBorder, insideVertical:noBorder },
+      rows:[ new TableRow({ children:[
+        sigCell([ new Paragraph('') ]),
+        sigCell([
+          p('Mengetahui,'), p((ppkJabatan||'PPK')+','),
+          new Paragraph(''), new Paragraph(''), new Paragraph(''),
+          p(ppkNama||' ', {underline:{}}),
+          ...(ppkJabatan?[p(ppkJabatan)]:[]),
+          ...(ppkNip?[p('NIP. '+ppkNip)]:[])
+        ]),
+      ]})]
+    });
 
     const doc = new Document({ sections:[{
       properties: { titlePage: true },
@@ -905,7 +920,7 @@ async function unduhWordHadir(){
         new Paragraph(''),
         mainTable,
         new Paragraph(''), new Paragraph(''),
-        ...sigParas
+        sigTable
       ]
     }]});
 
