@@ -214,6 +214,72 @@ async function pilihPegawai(btn, nama){
   await muatData();
 }
 
+/* ---------- Pemetaan username -> nama asli karyawan (Kanri001 sengaja tidak dimasukkan) ---------- */
+const NAMA_PEGAWAI_MAP = {
+  "Kanri002": "Nurlaili Alfisyah",
+  "Kanri003": "Reza Pusparani Pertiwi",
+  "Kanri004": "Ega Amaylia",
+  "Kanri005": "Putri Syahida Karbala",
+  "Kanri006": "Lucky Asprilla",
+  "Kanri007": "Jeva Mahardiyan",
+  "Kanri008": "Anita Septianah",
+  "Kanri009": "Mariyah Ulfah",
+  "Kanri010": "Istiqomatul Ilmia",
+  "Kanri011": "Hasmiawati",
+  "Kanri012": "Adellia Eka Kartikasari",
+  "Kanri013": "Yulia Masruroh",
+  "Kanri014": "Sherlien Amelia Putri",
+  "Kanri015": "Anisyah Kartika Arrozid",
+  "Kanri016": "Bintang Maulana Alamsyah Gunawan",
+  "Kanri017": "Achmad Wahyudi",
+  "Kanri018": "Fajar Ismail",
+  "Kanri019": "Dano Ade Kennedy",
+  "Kanri020": "Resha Azza Shoftarahmansyah",
+  "Kanri021": "Wahyu Mukti",
+  "Kanri022": "Maulana Yuda Anugrah",
+  "Kanri023": "Umi Chanifah",
+  "Kanri024": "Heri Sutiyono",
+  "Kanri025": "Sujiati",
+  "Kanri026": "Muryani",
+  "Kanri027": "Nur Alfiyah",
+  "Kanri028": "Nanda Rizky Amartha",
+  "Kanri029": "Yanti",
+  "Kanri030": "Mohammad Rizky Nur Yahya",
+  "Kanri031": "Prayoga Rivanda",
+  "Kanri032": "Sri Temon",
+  "Kanri033": "Nita Jayanti",
+  "Kanri034": "Besari",
+  "Kanri035": "Gunarto",
+  "Kanri036": "Edi Buwono",
+  "Kanri037": "Didik Indri Arifin",
+  "Kanri038": "Trimulyo Hadi Wibowo",
+  "Kanri039": "Awalludin Rizal Afgandi",
+  "Kanri040": "Ahmad Zubair Firmansyah",
+  "Kanri041": "Misbahul Munir",
+  "Kanri042": "Moch. Junaedi Abdillah",
+  "Kanri043": "Afif Soelistiyono",
+  "Kanri044": "Rudi Kurniawan",
+  "Kanri045": "Cheryl Audreyvana Harvienanda",
+  "Kanri046": "Dwi Nur Bagus Rohman",
+  "Kanri047": "Ach. Mashadi",
+  "Kanri048": "Kiano Ardeny",
+  "Kanri049": "Kriswanto",
+  "Kanri050": "Dhani Ahmad Riyantono",
+  "Kanri051": "Aprianto",
+  "Kanri052": "Eko Pramanto",
+  "Kanri053": "Nazaruddin Fauzi Effendy",
+  "Kanri054": "Luluk Subandiyono",
+  "Kanri055": "Ahmad Pandu Prayoga",
+  "Kanri056": "Mochammad Ardani",
+  "Kanri057": "Karina Ramadini Puspasari",
+  "Kanri058": "Endang Subandiyah",
+  "Kanri059": "Nia Oktaviana",
+  "Kanri060": "Riani",
+  "Kanri061": "Murtafi'ah",
+  "Kanri062": "Sakti Setyowati",
+  "Kanri063": "Sela Sihwinantu"
+};
+
 /* ---------- Login / sesi ---------- */
 async function doLogin(){
   const user = document.getElementById('login_user').value.trim();
@@ -238,7 +304,7 @@ async function showApp(){
   const uname = user?.user_metadata?.username || '';
   isAdmin = user?.app_metadata?.role === 'admin';
   document.getElementById('whoami').textContent = uname ? ('Masuk sebagai '+uname+(isAdmin?' (Admin)':'')) : '';
-  if(uname && !document.getElementById('nama').value) document.getElementById('nama').value = uname;
+  if(uname && !document.getElementById('nama').value) document.getElementById('nama').value = NAMA_PEGAWAI_MAP[uname] || uname;
   document.getElementById('ppkSaveRow').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('ppkNonAdminNote').style.display = isAdmin ? 'none' : 'block';
   ['ppk_nama','ppk_jabatan','ppk_nip'].forEach(id=>document.getElementById(id).disabled = !isAdmin);
