@@ -92,6 +92,12 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     </div>
   </div>
 
+  <div class="row-actions" style="margin-bottom:2px">
+    <button class="btn-primary" id="tabBtnKegiatan" onclick="switchTab('kegiatan')">📋 Laporan Kegiatan Harian</button>
+    <button class="btn-ghost" id="tabBtnHadir" onclick="switchTab('hadir')">🕒 Kedatangan &amp; Kepulangan</button>
+  </div>
+
+  <div id="tabKegiatan">
   <div class="card">
     <strong>Tambah Data Kegiatan</strong>
     <div class="grid2">
@@ -116,6 +122,42 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     <strong>Daftar Kegiatan (<span id="count">0</span>)</strong>
     <div class="tbl-wrap" id="tableHolder"><div class="empty">Isi Nama & Bulan lalu klik "Muat Data".</div></div>
   </div>
+  <div class="row-actions">
+    <button class="btn-primary" onclick="unduhWord()">⬇️ Unduh Laporan Kegiatan (.docx)</button>
+    <button class="btn-ghost" onclick="if(confirm('Hapus semua data Kegiatan Nama+Bulan ini dari server?'))resetData()">Hapus Semua (bulan ini)</button>
+  </div>
+  </div>
+
+  <div id="tabHadir" style="display:none">
+  <div class="card">
+    <label>Judul Laporan Kedatangan &amp; Kepulangan</label>
+    <input id="judul_hadir" type="text" placeholder="Contoh: DAFTAR HADIR">
+  </div>
+  <div class="card">
+    <strong>Tambah Data Kehadiran</strong>
+    <label>Tanggal</label><input id="fh_tanggal" type="date">
+    <div class="grid2">
+      <div><label>Foto Kedatangan</label>
+        <div class="file-box" id="box_foto_datang">Tap untuk upload foto<input type="file" accept="image/*" id="fh_foto_datang"></div>
+      </div>
+      <div><label>Foto Kepulangan</label>
+        <div class="file-box" id="box_foto_pulang">Tap untuk upload foto<input type="file" accept="image/*" id="fh_foto_pulang"></div>
+      </div>
+    </div>
+    <div class="row-actions">
+      <button class="btn-primary" id="btnTambahHadir" onclick="tambahDataHadir()">+ Tambah ke Daftar</button>
+      <span class="status" id="addStatusHadir"></span>
+    </div>
+  </div>
+  <div class="card">
+    <strong>Daftar Kehadiran (<span id="countHadir">0</span>)</strong>
+    <div class="tbl-wrap" id="tableHolderHadir"><div class="empty">Isi Nama & Bulan lalu buka tab ini.</div></div>
+  </div>
+  <div class="row-actions">
+    <button class="btn-primary" onclick="unduhWordHadir()">⬇️ Unduh Daftar Hadir (.docx)</button>
+    <button class="btn-ghost" onclick="if(confirm('Hapus semua data Kehadiran Nama+Bulan ini dari server?'))resetDataHadir()">Hapus Semua (bulan ini)</button>
+  </div>
+  </div>
 
   <div class="card">
     <strong>Tanda Tangan (untuk dokumen Word)</strong>
@@ -130,11 +172,6 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
       <span class="status" id="ppkStatus"></span>
     </div>
     <div class="small" id="ppkNonAdminNote" style="margin-top:8px;display:none">Info PPK ini diatur oleh admin dan berlaku otomatis di semua device.</div>
-  </div>
-
-  <div class="row-actions">
-    <button class="btn-primary" onclick="unduhWord()">⬇️ Unduh sebagai Word (.docx)</button>
-    <button class="btn-ghost" onclick="if(confirm('Hapus semua data Nama+Bulan ini dari server?'))resetData()">Hapus Semua (bulan ini)</button>
   </div>
   </div>
 </div>
@@ -151,7 +188,18 @@ const CONFIG = {
 };
 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let currentData = [];
+let currentDataHadir = [];
 let isAdmin = false;
+let activeTab = 'kegiatan';
+
+function switchTab(tab){
+  activeTab = tab;
+  document.getElementById('tabKegiatan').style.display = tab==='kegiatan' ? 'block' : 'none';
+  document.getElementById('tabHadir').style.display = tab==='hadir' ? 'block' : 'none';
+  document.getElementById('tabBtnKegiatan').className = tab==='kegiatan' ? 'btn-primary' : 'btn-ghost';
+  document.getElementById('tabBtnHadir').className = tab==='hadir' ? 'btn-primary' : 'btn-ghost';
+  if(getBulan()){ tab==='hadir' ? muatDataHadir() : muatData(); }
+}
 
 /* ---------- Dropdown Bulan (format selalu identik di semua device, tidak lagi rawan salah ketik) ---------- */
 const BULAN_NAMES = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -211,7 +259,7 @@ async function pilihPegawai(btn, nama){
   saveInfo();
   const bulan = getBulan();
   if(!bulan){ alert('Isi Bulan dulu (di atas), baru pilih nama pegawai.'); return; }
-  await muatData();
+  await (activeTab==='hadir' ? muatDataHadir() : muatData());
 }
 
 /* ---------- Pemetaan username -> nama asli karyawan (Kanri001 sengaja tidak dimasukkan) ---------- */
@@ -323,17 +371,19 @@ try{
   if(info){
     const o = JSON.parse(info);
     document.getElementById('judul').value = o.judul||'LAPORAN KEGIATAN';
+    document.getElementById('judul_hadir').value = o.judul_hadir||'DAFTAR HADIR';
     document.getElementById('subjudul').value = o.subjudul||'';
     document.getElementById('nama').value = o.nama||'';
     setBulan(o.bulan||'');
     document.getElementById('jadwal').value = o.jadwal||'';
-  } else { document.getElementById('judul').value = 'LAPORAN KEGIATAN'; }
+  } else { document.getElementById('judul').value = 'LAPORAN KEGIATAN'; document.getElementById('judul_hadir').value = 'DAFTAR HADIR'; }
 }catch(e){ console.warn('load info gagal', e); }
 
 function saveInfo(){
   try{
     localStorage.setItem('laporan_info', JSON.stringify({
       judul: document.getElementById('judul').value,
+      judul_hadir: document.getElementById('judul_hadir').value,
       subjudul: document.getElementById('subjudul').value,
       nama: document.getElementById('nama').value,
       bulan: getBulan(),
@@ -341,7 +391,7 @@ function saveInfo(){
     }));
   }catch(e){}
 }
-['judul','subjudul','nama','jadwal'].forEach(id=>document.getElementById(id).addEventListener('input', saveInfo));
+['judul','judul_hadir','subjudul','nama','jadwal'].forEach(id=>document.getElementById(id).addEventListener('input', saveInfo));
 
 /* ---------- Info PPK (tersimpan di Supabase, berlaku sama di semua device) ---------- */
 async function loadPPKInfo(){
@@ -400,6 +450,24 @@ async function muatData(){
   }
 }
 
+/* ---------- Muat data Kehadiran (Datang/Pulang) dari Supabase ---------- */
+async function muatDataHadir(){
+  saveInfo();
+  const bulan = getBulan();
+  const nama = document.getElementById('nama').value.trim();
+  if(!bulan) return;
+  try{
+    let query = sb.from('kehadiran').select('*').eq('bulan', bulan).order('tanggal', {ascending:true});
+    if(isAdmin && nama) query = query.eq('nama_pegawai', nama);
+    const { data, error } = await query;
+    if(error) throw error;
+    currentDataHadir = data || [];
+    renderTableHadir();
+  }catch(e){
+    alert('Gagal memuat data kehadiran: '+e.message);
+  }
+}
+
 /* ---------- Upload & kompres foto, lalu unggah ke Cloudinary ---------- */
 let pendingBlob = null;
 function resizeToBlob(file, cb){
@@ -435,6 +503,27 @@ function setupFileBox(){
   });
 }
 setupFileBox();
+
+/* ---------- Upload foto ganda (datang & pulang) untuk Kehadiran ---------- */
+let pendingBlobDatang = null, pendingBlobPulang = null;
+function setupHadirBox(boxId, inputId, which){
+  const inp = document.getElementById(inputId);
+  const box = document.getElementById(boxId);
+  inp.addEventListener('change', ()=>{
+    if(!inp.files[0]) return;
+    resizeToBlob(inp.files[0], (blob, previewUrl)=>{
+      if(which==='datang') pendingBlobDatang = blob; else pendingBlobPulang = blob;
+      box.innerHTML = '<img src="'+previewUrl+'">';
+      const newInput = document.createElement('input');
+      newInput.type='file'; newInput.accept='image/*'; newInput.id=inputId;
+      newInput.style.cssText='position:absolute;inset:0;opacity:0;cursor:pointer;';
+      box.appendChild(newInput);
+      setupHadirBox(boxId, inputId, which);
+    });
+  });
+}
+setupHadirBox('box_foto_datang','fh_foto_datang','datang');
+setupHadirBox('box_foto_pulang','fh_foto_pulang','pulang');
 
 async function uploadToCloudinary(blob){
   const fd = new FormData();
@@ -516,7 +605,70 @@ function renderTable(){
   holder.innerHTML = html;
 }
 
-/* ---------- Export ke Word (docx.js - gambar tertanam biner, andal) ---------- */
+/* ---------- CRUD data Kehadiran (Datang/Pulang) ---------- */
+async function tambahDataHadir(){
+  const nama = document.getElementById('nama').value.trim();
+  const bulan = getBulan();
+  const tanggal = document.getElementById('fh_tanggal').value;
+  const st = document.getElementById('addStatusHadir');
+  const btn = document.getElementById('btnTambahHadir');
+  if(!bulan){ alert('Pilih Bulan di Kop Laporan dulu.'); return; }
+  if(!tanggal){ alert('Mohon isi tanggal.'); return; }
+  btn.disabled = true;
+  try{
+    let fotoDatangUrl = '', fotoPulangUrl = '';
+    if(pendingBlobDatang){ st.textContent = 'Mengunggah foto datang...'; fotoDatangUrl = await uploadToCloudinary(pendingBlobDatang); }
+    if(pendingBlobPulang){ st.textContent = 'Mengunggah foto pulang...'; fotoPulangUrl = await uploadToCloudinary(pendingBlobPulang); }
+    st.textContent = 'Menyimpan data...';
+    const { error } = await sb.from('kehadiran').insert({
+      nama_pegawai: nama, bulan: bulan, tanggal: tanggal,
+      foto_datang_url: fotoDatangUrl, foto_pulang_url: fotoPulangUrl
+    });
+    if(error) throw error;
+    st.textContent = 'Tersimpan.';
+    document.getElementById('fh_tanggal').value='';
+    const boxD = document.getElementById('box_foto_datang');
+    boxD.innerHTML = 'Tap untuk upload foto<input type="file" accept="image/*" id="fh_foto_datang" style="position:absolute;inset:0;opacity:0;cursor:pointer;">';
+    const boxP = document.getElementById('box_foto_pulang');
+    boxP.innerHTML = 'Tap untuk upload foto<input type="file" accept="image/*" id="fh_foto_pulang" style="position:absolute;inset:0;opacity:0;cursor:pointer;">';
+    pendingBlobDatang = null; pendingBlobPulang = null;
+    setupHadirBox('box_foto_datang','fh_foto_datang','datang');
+    setupHadirBox('box_foto_pulang','fh_foto_pulang','pulang');
+    await muatDataHadir();
+  }catch(e){
+    st.textContent='';
+    alert('Gagal menyimpan: '+e.message);
+  }finally{ btn.disabled = false; }
+}
+async function hapusBarisHadir(id){
+  try{
+    const { error } = await sb.from('kehadiran').delete().eq('id', id);
+    if(error) throw error;
+    await muatDataHadir();
+  }catch(e){ alert('Gagal menghapus: '+e.message); }
+}
+async function resetDataHadir(){
+  const bulan = getBulan();
+  try{
+    const { error } = await sb.from('kehadiran').delete().eq('bulan', bulan);
+    if(error) throw error;
+    await muatDataHadir();
+  }catch(e){ alert('Gagal menghapus: '+e.message); }
+}
+function renderTableHadir(){
+  document.getElementById('countHadir').textContent = currentDataHadir.length;
+  const holder = document.getElementById('tableHolderHadir');
+  if(currentDataHadir.length===0){ holder.innerHTML = '<div class="empty">Belum ada data untuk Nama+Bulan ini.</div>'; return; }
+  let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Data Dukung Kehadiran Datang</th><th>Data Dukung Kehadiran Pulang</th><th></th></tr></thead><tbody>';
+  currentDataHadir.forEach((d,i)=>{
+    html += '<tr><td>'+(i+1)+'</td><td>'+fmtTgl(d.tanggal)+'</td>'
+      + '<td class="imgcell">'+(d.foto_datang_url?'<img src="'+d.foto_datang_url+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
+      + '<td class="imgcell">'+(d.foto_pulang_url?'<img src="'+d.foto_pulang_url+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
+      + '<td><button class="btn-danger" onclick="hapusBarisHadir('+d.id+')">Hapus</button></td></tr>';
+  });
+  html += '</tbody></table>';
+  holder.innerHTML = html;
+}
 async function unduhWord(){
   if(currentData.length===0){ alert('Belum ada data untuk diunduh. Klik "Muat Data" dulu.'); return; }
   if(typeof docx === 'undefined'){
@@ -651,6 +803,117 @@ async function unduhWord(){
     const a = document.createElement('a');
     a.href = url;
     a.download = 'Laporan_Kegiatan_'+(nama||'pegawai').replace(/\s+/g,'_')+'_'+(bulan||'').replace(/\s+/g,'_')+'.docx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }catch(e){
+    alert('Gagal membuat file Word: '+e.message);
+  }finally{ if(btn) btn.disabled = false; }
+}
+
+/* ---------- Export ke Word: Daftar Hadir (Kedatangan & Kepulangan) - dokumen terpisah ---------- */
+async function unduhWordHadir(){
+  if(currentDataHadir.length===0){ alert('Belum ada data kehadiran untuk diunduh.'); return; }
+  if(typeof docx === 'undefined'){ alert('Library pembuat Word (docx.js) gagal dimuat dari internet.'); return; }
+  let judul, subjudul, nama, bulan, jadwal, ppkNama, ppkJabatan, ppkNip, btn;
+  try{
+    const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, ImageRun,
+            WidthType, AlignmentType, VerticalAlign, BorderStyle, Header, Tab, TabStopType } = docx;
+
+    judul = document.getElementById('judul_hadir').value || 'DAFTAR HADIR';
+    subjudul = document.getElementById('subjudul').value || '';
+    nama = document.getElementById('nama').value || '-';
+    bulan = getBulan() || '-';
+    jadwal = (document.getElementById('jadwal').value || '').split('\n').filter(x=>x.trim()!=='');
+    ppkNama = document.getElementById('ppk_nama').value || '';
+    ppkJabatan = document.getElementById('ppk_jabatan').value || '';
+    ppkNip = document.getElementById('ppk_nip').value || '';
+
+    btn = document.querySelector('button[onclick="unduhWordHadir()"]');
+    if(btn) btn.disabled = true;
+
+    const COL_WIDTHS = [600, 1400, 3500, 3500];
+    const cell = (children, colIdx) => new TableCell({ children, verticalAlign: VerticalAlign.CENTER, width:{ size: COL_WIDTHS[colIdx], type: WidthType.DXA } });
+    const p = (text, opts={}) => new Paragraph({ children:[new TextRun({text, ...opts})], alignment: opts.alignment||AlignmentType.CENTER });
+
+    const headerRow = new TableRow({ tableHeader:true, children:[
+      cell([p('No', {bold:true})], 0),
+      cell([p('Tanggal', {bold:true})], 1),
+      cell([p('Data Dukung Kehadiran Datang', {bold:true})], 2),
+      cell([p('Data Dukung Kehadiran Pulang', {bold:true})], 3),
+    ]});
+
+    const PAGE_CONTENT_WIDTH = 9020;
+    const tabLine = (left, right) => new Paragraph({
+      tabStops: [{ type: TabStopType.RIGHT, position: PAGE_CONTENT_WIDTH }],
+      children: [ new TextRun(left||''), new TextRun({children:[new Tab()]}), new TextRun(right||'') ]
+    });
+    const jumlahBarisInfo = Math.max(2, jadwal.length);
+    const infoLinesHalaman1 = [];
+    for(let i=0;i<jumlahBarisInfo;i++){
+      const kiri = i===0 ? ('Nama : '+nama) : i===1 ? ('Bulan : '+bulan) : '';
+      infoLinesHalaman1.push(tabLine(kiri, jadwal[i] || ''));
+    }
+    const headerHalamanPertama = new Header({ children:[ new Paragraph('') ] });
+    const headerHalamanBerikutnya = new Header({ children:[
+      new Paragraph({ children:[ new TextRun('Nama : '+nama) ] }),
+      new Paragraph({ children:[ new TextRun('Bulan : '+bulan) ] }),
+    ]});
+
+    async function fotoParagraph(url){
+      if(!url) return p('-');
+      try{
+        const res = await fetch(url);
+        const buf = await res.arrayBuffer();
+        return new Paragraph({ alignment: AlignmentType.CENTER, children:[ new ImageRun({ data: buf, type:'jpg', transformation:{ width:150, height:150 } }) ] });
+      }catch(e){ return p('(foto gagal dimuat)'); }
+    }
+
+    const dataRows = [];
+    for(let i=0;i<currentDataHadir.length;i++){
+      const d = currentDataHadir[i];
+      const fotoDatang = await fotoParagraph(d.foto_datang_url);
+      const fotoPulang = await fotoParagraph(d.foto_pulang_url);
+      dataRows.push(new TableRow({ children:[
+        cell([p(String(i+1))], 0),
+        cell([p(fmtTgl(d.tanggal))], 1),
+        cell([fotoDatang], 2),
+        cell([fotoPulang], 3),
+      ]}));
+    }
+
+    const mainTable = new Table({ width:{ size:100, type:WidthType.PERCENTAGE }, columnWidths: COL_WIDTHS, rows:[headerRow, ...dataRows] });
+
+    // Sesuai permintaan: tanda tangan "Yang Membuat Laporan" dihapus, hanya "Mengetahui, PPK" saja.
+    const sigParas = [
+      p('Mengetahui,'), p((ppkJabatan||'PPK')+','),
+      new Paragraph(''), new Paragraph(''), new Paragraph(''),
+      p(ppkNama||' ', {underline:{}}),
+      ...(ppkJabatan?[p(ppkJabatan)]:[]),
+      ...(ppkNip?[p('NIP. '+ppkNip)]:[])
+    ];
+
+    const doc = new Document({ sections:[{
+      properties: { titlePage: true },
+      headers: { first: headerHalamanPertama, default: headerHalamanBerikutnya },
+      children:[
+        new Paragraph({ alignment: AlignmentType.CENTER, children:[new TextRun({text:judul, bold:true, size:28})] }),
+        ...(subjudul?[new Paragraph({ alignment: AlignmentType.CENTER, children:[new TextRun({text:subjudul, size:22})] })]:[]),
+        new Paragraph(''),
+        ...infoLinesHalaman1,
+        new Paragraph(''),
+        mainTable,
+        new Paragraph(''), new Paragraph(''),
+        ...sigParas
+      ]
+    }]});
+
+    const blob = await Packer.toBlob(doc);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Daftar_Hadir_'+(nama||'pegawai').replace(/\s+/g,'_')+'_'+(bulan||'').replace(/\s+/g,'_')+'.docx';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
