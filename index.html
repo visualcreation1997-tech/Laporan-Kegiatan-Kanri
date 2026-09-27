@@ -114,8 +114,8 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
 
   <div class="card" id="adminNamaCard" style="display:none">
     <strong>Daftar Pegawai (Admin)</strong>
-    <div class="small" style="margin:4px 0 10px">Klik salah satu nama untuk melihat & mengunduh laporan kegiatannya (untuk Bulan yang sedang diisi di atas).</div>
-    <div id="adminNamaList" class="small">Memuat...</div>
+    <div class="small" style="margin:4px 0 10px">Pilih pegawai untuk melihat & mengunduh laporan kegiatannya (untuk Bulan yang sedang diisi di atas). Pilih "Semua Pegawai" untuk melihat semua sekaligus.</div>
+    <select id="adminNamaSelect" onchange="pilihPegawaiDariSelect(this.value)"><option value="">Memuat...</option></select>
   </div>
 
   <div class="card">
@@ -124,7 +124,8 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
   </div>
   <div class="row-actions">
     <button class="btn-primary" onclick="unduhWord()">⬇️ Unduh Laporan Kegiatan (.docx)</button>
-    <button class="btn-ghost" id="btnHapusSemuaKegiatan" style="display:none" onclick="if(confirm('Hapus SEMUA data Kegiatan (dari SEMUA pegawai) untuk Bulan '+getBulan()+'?'))resetData()">Hapus Semua (bulan ini)</button>
+    <select id="hapusBulanKegiatan" style="display:none;max-width:160px"><option value="">Memuat...</option></select>
+    <button class="btn-ghost" id="btnHapusSemuaKegiatan" style="display:none" onclick="hapusSemuaBulan('kegiatan')">🗑️ Hapus per Bulan</button>
   </div>
   </div>
 
@@ -151,8 +152,8 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
   </div>
   <div class="card" id="adminNamaCardHadir" style="display:none">
     <strong>Daftar Pegawai (Admin)</strong>
-    <div class="small" style="margin:4px 0 10px">Klik salah satu nama untuk melihat & mengunduh laporan kehadirannya (untuk Bulan yang sedang diisi di atas).</div>
-    <div id="adminNamaListHadir" class="small">Memuat...</div>
+    <div class="small" style="margin:4px 0 10px">Pilih pegawai untuk melihat & mengunduh laporan kehadirannya (untuk Bulan yang sedang diisi di atas). Pilih "Semua Pegawai" untuk melihat semua sekaligus.</div>
+    <select id="adminNamaSelectHadir" onchange="pilihPegawaiDariSelect(this.value)"><option value="">Memuat...</option></select>
   </div>
   <div class="card">
     <strong>Daftar Kehadiran (<span id="countHadir">0</span>)</strong>
@@ -160,7 +161,8 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
   </div>
   <div class="row-actions">
     <button class="btn-primary" onclick="unduhWordHadir()">⬇️ Unduh Daftar Hadir (.docx)</button>
-    <button class="btn-ghost" id="btnHapusSemuaHadir" style="display:none" onclick="if(confirm('Hapus SEMUA data Kehadiran (dari SEMUA pegawai) untuk Bulan '+getBulan()+'?'))resetDataHadir()">Hapus Semua (bulan ini)</button>
+    <select id="hapusBulanHadir" style="display:none;max-width:160px"><option value="">Memuat...</option></select>
+    <button class="btn-ghost" id="btnHapusSemuaHadir" style="display:none" onclick="hapusSemuaBulan('kehadiran')">🗑️ Hapus per Bulan</button>
   </div>
   </div>
 
@@ -235,41 +237,55 @@ function setBulan(str){
     sel.value = yr;
   }
 }
+function sortBulanList(list){
+  return list.sort((a,b)=>{
+    const [an,ay] = a.split(' '); const [bn,by] = b.split(' ');
+    if(ay!==by) return Number(ay)-Number(by);
+    return BULAN_NAMES.indexOf(an)-BULAN_NAMES.indexOf(bn);
+  });
+}
 
-/* ---------- (Admin) Muat daftar nama pegawai: autocomplete + daftar tombol klik ---------- */
+/* ---------- (Admin) Muat daftar nama pegawai: autocomplete + dropdown (simple, muat sampai ratusan nama) ---------- */
 async function loadNamaList(){
   if(!isAdmin) return;
   const card = document.getElementById('adminNamaCard');
-  const holder = document.getElementById('adminNamaList');
+  const sel = document.getElementById('adminNamaSelect');
   const cardHadir = document.getElementById('adminNamaCardHadir');
-  const holderHadir = document.getElementById('adminNamaListHadir');
+  const selHadir = document.getElementById('adminNamaSelectHadir');
   card.style.display = 'block';
   cardHadir.style.display = 'block';
   try{
-    const { data, error } = await sb.from('kegiatan').select('nama_pegawai');
-    if(error) throw error;
-    const names = [...new Set((data||[]).map(d=>d.nama_pegawai).filter(Boolean))].sort();
+    // Gabungkan nama dari tabel kegiatan DAN kehadiran, supaya pegawai yang baru mengisi
+    // salah satunya saja (belum tentu dua-duanya) tetap muncul di daftar admin.
+    const [{ data:dataKeg, error:errKeg }, { data:dataHad, error:errHad }] = await Promise.all([
+      sb.from('kegiatan').select('nama_pegawai'),
+      sb.from('kehadiran').select('nama_pegawai')
+    ]);
+    if(errKeg) throw errKeg;
+    if(errHad) throw errHad;
+    const names = [...new Set([...(dataKeg||[]), ...(dataHad||[])].map(d=>d.nama_pegawai).filter(Boolean))].sort();
     const dl = document.getElementById('namaListOptions');
     dl.innerHTML = names.map(n=>'<option value="'+n.replace(/"/g,'&quot;')+'">').join('');
     if(names.length===0){
-      const pesan = '<span class="small">Belum ada data kegiatan sama sekali.</span>';
-      holder.innerHTML = pesan; holderHadir.innerHTML = pesan;
+      const pesan = '<option value="">Belum ada data sama sekali</option>';
+      sel.innerHTML = pesan; selHadir.innerHTML = pesan;
       return;
     }
     const namaAktif = document.getElementById('nama').value.trim();
-    const chipsHtml = '<div class="chip-list">'+names.map(n=>
-      '<button type="button" class="chip'+(n===namaAktif?' active':'')+'" onclick="pilihPegawai(this,\''+n.replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\')">'+n+'</button>'
-    ).join('')+'</div>';
-    holder.innerHTML = chipsHtml;
-    holderHadir.innerHTML = chipsHtml;
+    const optsHtml = '<option value="">— Semua Pegawai ('+names.length+' orang) —</option>' + names.map(n=>
+      '<option value="'+n.replace(/"/g,'&quot;')+'">'+n+'</option>'
+    ).join('');
+    sel.innerHTML = optsHtml;
+    selHadir.innerHTML = optsHtml;
+    sel.value = namaAktif; selHadir.value = namaAktif;
   }catch(e){
-    const pesan = '<span class="small">Gagal memuat daftar nama: '+e.message+'</span>';
-    holder.innerHTML = pesan; holderHadir.innerHTML = pesan;
+    const pesan = '<option value="">Gagal memuat: '+e.message+'</option>';
+    sel.innerHTML = pesan; selHadir.innerHTML = pesan;
   }
 }
-async function pilihPegawai(btn, nama){
-  document.querySelectorAll('#adminNamaList .chip, #adminNamaListHadir .chip').forEach(c=>c.classList.remove('active'));
-  document.querySelectorAll('#adminNamaList .chip, #adminNamaListHadir .chip').forEach(c=>{ if(c.textContent===nama) c.classList.add('active'); });
+async function pilihPegawaiDariSelect(nama){
+  document.getElementById('adminNamaSelect').value = nama;
+  document.getElementById('adminNamaSelectHadir').value = nama;
   document.getElementById('nama').value = nama;
   saveInfo();
   const bulan = getBulan();
@@ -372,9 +388,12 @@ async function showApp(){
   document.getElementById('ppkNonAdminNote').style.display = isAdmin ? 'none' : 'block';
   document.getElementById('btnHapusSemuaKegiatan').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('btnHapusSemuaHadir').style.display = isAdmin ? 'inline-block' : 'none';
+  document.getElementById('hapusBulanKegiatan').style.display = isAdmin ? 'inline-block' : 'none';
+  document.getElementById('hapusBulanHadir').style.display = isAdmin ? 'inline-block' : 'none';
   ['ppk_nama','ppk_jabatan','ppk_nip'].forEach(id=>document.getElementById(id).disabled = !isAdmin);
   await loadPPKInfo();
   if(isAdmin) await loadNamaList();
+  if(isAdmin) await loadBulanHapusList();
   if(getBulan()) muatData();
 }
 window.addEventListener('load', async ()=>{
@@ -448,14 +467,12 @@ async function muatData(){
   if(!bulan){ alert('Pilih Bulan dulu.'); return; }
   st.textContent = 'Memuat...';
   try{
-    // Catatan: RLS membatasi hasil hanya milik akun yang login, kecuali akun admin (bisa lihat semua).
-    // Filter nama_pegawai di bawah membuat laporan yang tampil/di-print selalu per satu orang,
-    // termasuk saat admin sedang melihat data banyak pegawai untuk bulan yang sama.
+    // PERBAIKAN: sebelumnya filter nama hanya dipakai untuk admin, dengan asumsi RLS sudah membatasi
+    // pegawai biasa ke datanya sendiri. Ternyata asumsi itu salah -> pegawai biasa bisa melihat data
+    // pegawai lain. Sekarang filter nama_pegawai SELALU dipakai kalau field Nama terisi (baik admin
+    // maupun bukan). Admin bisa mengosongkan Nama (lewat dropdown "Semua Pegawai") untuk melihat semua.
     let query = sb.from('kegiatan').select('*').eq('bulan', bulan).order('tanggal', {ascending:true});
-    // Filter nama hanya dipakai untuk admin (yang bisa lihat banyak pegawai sekaligus).
-    // Pegawai biasa sudah otomatis dibatasi RLS ke datanya sendiri, jadi tidak perlu difilter nama
-    // (menghindari kasus nama di kop laporan beda teks dengan nama_pegawai yang tersimpan).
-    if(isAdmin && nama) query = query.eq('nama_pegawai', nama);
+    if(nama) query = query.eq('nama_pegawai', nama);
     const { data, error } = await query;
     if(error) throw error;
     currentData = data || [];
@@ -475,7 +492,7 @@ async function muatDataHadir(){
   if(!bulan) return;
   try{
     let query = sb.from('kehadiran').select('*').eq('bulan', bulan).order('tanggal', {ascending:true});
-    if(isAdmin && nama) query = query.eq('nama_pegawai', nama);
+    if(nama) query = query.eq('nama_pegawai', nama);
     const { data, error } = await query;
     if(error) throw error;
     currentDataHadir = data || [];
@@ -594,13 +611,44 @@ async function hapusBaris(id){
     await muatData();
   }catch(e){ alert('Gagal menghapus: '+e.message); }
 }
-async function resetData(){
-  if(!isAdmin){ alert('Hanya admin yang bisa menghapus semua data.'); return; }
-  const bulan = getBulan();
+async function loadBulanHapusList(){
+  if(!isAdmin) return;
+  const selK = document.getElementById('hapusBulanKegiatan');
+  const selH = document.getElementById('hapusBulanHadir');
   try{
-    const { error } = await sb.from('kegiatan').delete().eq('bulan', bulan);
+    const [{ data:dataKeg, error:errKeg }, { data:dataHad, error:errHad }] = await Promise.all([
+      sb.from('kegiatan').select('bulan'),
+      sb.from('kehadiran').select('bulan')
+    ]);
+    if(errKeg) throw errKeg;
+    if(errHad) throw errHad;
+    const bulanKeg = sortBulanList([...new Set((dataKeg||[]).map(d=>d.bulan).filter(Boolean))]);
+    const bulanHad = sortBulanList([...new Set((dataHad||[]).map(d=>d.bulan).filter(Boolean))]);
+    const cur = getBulan();
+    selK.innerHTML = bulanKeg.length ? bulanKeg.map(b=>'<option value="'+b+'">'+b+'</option>').join('') : '<option value="">(belum ada data)</option>';
+    selH.innerHTML = bulanHad.length ? bulanHad.map(b=>'<option value="'+b+'">'+b+'</option>').join('') : '<option value="">(belum ada data)</option>';
+    if(bulanKeg.includes(cur)) selK.value = cur;
+    if(bulanHad.includes(cur)) selH.value = cur;
+  }catch(e){
+    selK.innerHTML = '<option value="">Gagal memuat</option>';
+    selH.innerHTML = '<option value="">Gagal memuat</option>';
+  }
+}
+/* ---------- (Admin) Hapus semua data untuk 1 bulan pilihan dari dropdown (bukan otomatis ikut Bulan di atas) ---------- */
+async function hapusSemuaBulan(jenis){
+  if(!isAdmin){ alert('Hanya admin yang bisa menghapus semua data.'); return; }
+  const selId = jenis==='kegiatan' ? 'hapusBulanKegiatan' : 'hapusBulanHadir';
+  const bulanPilihan = document.getElementById(selId).value;
+  if(!bulanPilihan){ alert('Pilih dulu bulan yang mau dihapus.'); return; }
+  const label = jenis==='kegiatan' ? 'Kegiatan' : 'Kehadiran';
+  if(!confirm('Hapus SEMUA data '+label+' (dari SEMUA pegawai) untuk Bulan '+bulanPilihan+'? Tindakan ini tidak bisa dibatalkan.')) return;
+  try{
+    const table = jenis==='kegiatan' ? 'kegiatan' : 'kehadiran';
+    const { error } = await sb.from(table).delete().eq('bulan', bulanPilihan);
     if(error) throw error;
-    await muatData();
+    await loadBulanHapusList();
+    if(jenis==='kegiatan') await muatData(); else await muatDataHadir();
+    alert('Data '+label+' untuk Bulan '+bulanPilihan+' berhasil dihapus.');
   }catch(e){ alert('Gagal menghapus: '+e.message); }
 }
 function fmtTgl(t){
@@ -661,15 +709,6 @@ async function tambahDataHadir(){
 async function hapusBarisHadir(id){
   try{
     const { error } = await sb.from('kehadiran').delete().eq('id', id);
-    if(error) throw error;
-    await muatDataHadir();
-  }catch(e){ alert('Gagal menghapus: '+e.message); }
-}
-async function resetDataHadir(){
-  if(!isAdmin){ alert('Hanya admin yang bisa menghapus semua data.'); return; }
-  const bulan = getBulan();
-  try{
-    const { error } = await sb.from('kehadiran').delete().eq('bulan', bulan);
     if(error) throw error;
     await muatDataHadir();
   }catch(e){ alert('Gagal menghapus: '+e.message); }
