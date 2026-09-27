@@ -149,6 +149,11 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
       <span class="status" id="addStatusHadir"></span>
     </div>
   </div>
+  <div class="card" id="adminNamaCardHadir" style="display:none">
+    <strong>Daftar Pegawai (Admin)</strong>
+    <div class="small" style="margin:4px 0 10px">Klik salah satu nama untuk melihat & mengunduh laporan kehadirannya (untuk Bulan yang sedang diisi di atas).</div>
+    <div id="adminNamaListHadir" class="small">Memuat...</div>
+  </div>
   <div class="card">
     <strong>Daftar Kehadiran (<span id="countHadir">0</span>)</strong>
     <div class="tbl-wrap" id="tableHolderHadir"><div class="empty">Isi Nama & Bulan lalu buka tab ini.</div></div>
@@ -236,25 +241,35 @@ async function loadNamaList(){
   if(!isAdmin) return;
   const card = document.getElementById('adminNamaCard');
   const holder = document.getElementById('adminNamaList');
+  const cardHadir = document.getElementById('adminNamaCardHadir');
+  const holderHadir = document.getElementById('adminNamaListHadir');
   card.style.display = 'block';
+  cardHadir.style.display = 'block';
   try{
     const { data, error } = await sb.from('kegiatan').select('nama_pegawai');
     if(error) throw error;
     const names = [...new Set((data||[]).map(d=>d.nama_pegawai).filter(Boolean))].sort();
     const dl = document.getElementById('namaListOptions');
     dl.innerHTML = names.map(n=>'<option value="'+n.replace(/"/g,'&quot;')+'">').join('');
-    if(names.length===0){ holder.innerHTML = '<span class="small">Belum ada data kegiatan sama sekali.</span>'; return; }
+    if(names.length===0){
+      const pesan = '<span class="small">Belum ada data kegiatan sama sekali.</span>';
+      holder.innerHTML = pesan; holderHadir.innerHTML = pesan;
+      return;
+    }
     const namaAktif = document.getElementById('nama').value.trim();
-    holder.innerHTML = '<div class="chip-list">'+names.map(n=>
+    const chipsHtml = '<div class="chip-list">'+names.map(n=>
       '<button type="button" class="chip'+(n===namaAktif?' active':'')+'" onclick="pilihPegawai(this,\''+n.replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\')">'+n+'</button>'
     ).join('')+'</div>';
+    holder.innerHTML = chipsHtml;
+    holderHadir.innerHTML = chipsHtml;
   }catch(e){
-    holder.innerHTML = '<span class="small">Gagal memuat daftar nama: '+e.message+'</span>';
+    const pesan = '<span class="small">Gagal memuat daftar nama: '+e.message+'</span>';
+    holder.innerHTML = pesan; holderHadir.innerHTML = pesan;
   }
 }
 async function pilihPegawai(btn, nama){
-  document.querySelectorAll('#adminNamaList .chip').forEach(c=>c.classList.remove('active'));
-  if(btn) btn.classList.add('active');
+  document.querySelectorAll('#adminNamaList .chip, #adminNamaListHadir .chip').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('#adminNamaList .chip, #adminNamaListHadir .chip').forEach(c=>{ if(c.textContent===nama) c.classList.add('active'); });
   document.getElementById('nama').value = nama;
   saveInfo();
   const bulan = getBulan();
