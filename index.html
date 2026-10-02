@@ -46,6 +46,10 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
 .chip:hover{border-color:var(--accent);color:var(--accent);}
 .chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
 :root[data-theme="dark"] .warn,@media(prefers-color-scheme:dark){.warn{background:#3a2f0a;color:#f0d27a;border-color:#5a4a15;}}
+
+.report-status{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--border);font-size:.78rem;font-weight:600;}
+.status-draft{color:var(--muted)}.status-submitted{color:#b45309}.status-approved{color:#15803d}.status-revision{color:#b91c1c}
+.gps-info{font-size:.75rem;color:var(--muted);margin-top:6px;}
 </style>
 </head>
 <body>
@@ -93,6 +97,12 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
       <button class="btn-ghost" onclick="muatData()">🔄 Muat / Simpan Data untuk Nama+Bulan ini</button>
       <span class="status" id="loadStatus"></span>
     </div>
+    <div class="row-actions" id="reportControls" style="display:none">
+      <span class="report-status status-draft" id="reportStatus">Draft</span>
+      <button class="btn-primary" id="btnSubmitReport" onclick="submitCurrentReport()">📤 Kirim Laporan</button>
+      <span class="status" id="reportActionStatus"></span>
+    </div>
+    <div class="small" id="revisionNote" style="display:none;margin-top:8px"></div>
   </div>
 
   <div class="row-actions" style="margin-bottom:2px">
@@ -167,6 +177,12 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     <select id="hapusBulanHadir" style="display:none;max-width:160px"><option value="">Memuat...</option></select>
     <button class="btn-ghost" id="btnHapusSemuaHadir" style="display:none" onclick="hapusSemuaBulan('kehadiran')">🗑️ Hapus per Bulan</button>
   </div>
+  </div>
+
+  <div class="card" id="adminReviewCard" style="display:none">
+    <strong>Dashboard & Review Admin</strong>
+    <div class="small" style="margin:4px 0 10px">Menampilkan report pada Tahun dan Bulan yang sedang dipilih.</div>
+    <div class="tbl-wrap" id="adminReportHolder"><div class="empty">Pilih Bulan untuk memuat dashboard.</div></div>
   </div>
 
   <div class="card">
@@ -385,7 +401,8 @@ async function showApp(){
   await loadPPKInfo();
   if(isAdmin) await loadNamaList();
   if(isAdmin) await loadBulanHapusList();
-  if(getBulan()) { await muatData(); await muatDataHadir(); }
+  if(isAdmin) document.getElementById('adminReviewCard').style.display='block';
+  if(getBulan()) { await muatData(); await muatDataHadir(); if(isAdmin) await loadAdminDashboard(); }
 }
 
 window.addEventListener('load', async ()=>{
@@ -475,6 +492,7 @@ async function ensureCurrentReport(){
 async function refreshCurrentReport(){
   if(!getBulan()) return;
   if(activeTab==='hadir') await muatDataHadir(); else await muatData();
+  if(isAdmin) await loadAdminDashboard();
 }
 
 /* ---------- Muat data dari Supabase berdasar Nama+Bulan ---------- */
@@ -497,6 +515,7 @@ async function muatData(){
     currentEmployee=employee;
     const {year,month}=getYearMonth();
     currentReport=await getCurrentReport(employee.id,year,month); currentReportId=currentReport?.id||null;
+    updateReportStatusUI(currentReport);
     if(!currentReport){currentData=[];renderTable();st.textContent='Belum ada report untuk '+employee.name+' pada '+bulan+'.';return;}
     const {data,error}=await sb.from('activities').select('*').eq('report_id',currentReport.id)
       .order('activity_date',{ascending:true}).order('activity_time',{ascending:true});
@@ -516,11 +535,73 @@ async function muatDataHadir(){
     currentEmployee=employee;
     const {year,month}=getYearMonth();
     currentReport=await getCurrentReport(employee.id,year,month); currentReportId=currentReport?.id||null;
+    updateReportStatusUI(currentReport);
     if(!currentReport){currentDataHadir=[];renderTableHadir();return;}
     const {data,error}=await sb.from('attendance').select('*').eq('report_id',currentReport.id)
       .order('attendance_date',{ascending:true});
     if(error) throw error; currentDataHadir=data||[]; renderTableHadir();
   }catch(e){alert('Gagal memuat data kehadiran: '+e.message);}
+}
+
+/* ---------- GPS browser: digunakan saat menambah kegiatan / attendance ---------- */
+function getLocation(){
+  return new Promise((resolve,reject)=>{
+    if(!navigator.geolocation){
+      reject(new Error('Browser tidak mendukung GPS.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      position=>resolve({latitude:position.coords.latitude,longitude:position.coords.longitude}),
+      error=>reject(error),
+      {enableHighAccuracy:true,timeout:15000,maximumAge:0}
+    );
+  });
+}
+
+async function getLocationSafe(){
+  try{ return await getLocation(); }
+  catch(e){ console.warn('GPS tidak tersedia/ditolak:',e.message||e); return null; }
+}
+
+function updateReportStatusUI(report){
+  const controls=document.getElementById('reportControls');
+  const badge=document.getElementById('reportStatus');
+  const btn=document.getElementById('btnSubmitReport');
+  const note=document.getElementById('revisionNote');
+  if(!controls || !badge || !btn) return;
+  controls.style.display=report?'flex':'none';
+  if(!report){ badge.textContent='Draft'; badge.className='report-status status-draft'; return; }
+  const status=report.status||'draft';
+  badge.textContent=status.charAt(0).toUpperCase()+status.slice(1);
+  badge.className='report-status status-'+status;
+  btn.style.display=(status==='draft'||status==='revision')?'inline-block':'none';
+  btn.textContent=status==='revision'?'📤 Kirim Ulang':'📤 Kirim Laporan';
+  if(note){
+    note.style.display=status==='revision'?'block':'none';
+    note.textContent=status==='revision'?'Report dikembalikan untuk revisi. Silakan perbaiki data lalu kirim ulang.':'';
+  }
+}
+
+async function submitReport(reportId){
+  if(!reportId) throw new Error('Report ID tidak tersedia.');
+  const {error}=await sb.from('reports').update({status:'submitted',submitted_at:new Date().toISOString()}).eq('id',reportId);
+  if(error) throw error;
+}
+
+async function submitCurrentReport(){
+  const st=document.getElementById('reportActionStatus');
+  try{
+    const report=await ensureCurrentReport();
+    if(!['draft','revision'].includes(report.status||'draft')){ alert('Report dengan status '+report.status+' tidak dapat dikirim.'); return; }
+    if(!confirm('Kirim laporan ini untuk diperiksa admin?')) return;
+    st.textContent='Mengirim...';
+    await submitReport(report.id);
+    currentReport=await getCurrentReport(report.employee_id,report.year,report.month);
+    currentReportId=currentReport?.id||null;
+    updateReportStatusUI(currentReport);
+    st.textContent='Laporan berhasil dikirim.';
+    if(isAdmin) await loadAdminDashboard();
+  }catch(e){st.textContent='';alert('Gagal mengirim laporan: '+e.message);}
 }
 
 /* ---------- Upload & kompres foto, lalu unggah ke Cloudinary ---------- */
@@ -610,10 +691,17 @@ async function tambahData(){
     st.textContent = 'Menyiapkan report...';
     const report = await ensureCurrentReport();
     st.textContent = 'Menyimpan data...';
-    const activityTime = new Date().toTimeString().slice(0,5);
+    const activityTime = new Date().toISOString();
+    const location = await getLocationSafe();
+    if(!location) st.textContent='GPS tidak tersedia, menyimpan tanpa koordinat...';
     const { error } = await sb.from('activities').insert({
-      report_id: report.id, activity_date: tanggal, activity_time: activityTime,
-      uraian: desk, foto_url: fotoUrl
+      report_id: report.id,
+      activity_date: tanggal,
+      activity_time: activityTime,
+      description: desk,
+      photo_url: fotoUrl,
+      latitude: location?.latitude ?? null,
+      longitude: location?.longitude ?? null
     });
     if(error) throw error;
     st.textContent = 'Tersimpan.';
@@ -624,6 +712,8 @@ async function tambahData(){
     pendingBlob = null;
     setupFileBox();
     await muatData();
+    updateReportStatusUI(currentReport);
+    if(isAdmin) await loadAdminDashboard();
   }catch(e){
     st.textContent='';
     alert('Gagal menyimpan: '+e.message);
@@ -674,8 +764,8 @@ function renderTable(){
   let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Jam</th><th>Dokumentasi Kegiatan</th><th>Uraian Kegiatan</th><th></th></tr></thead><tbody>';
   currentData.forEach((d,i)=>{
     html += '<tr><td>'+(i+1)+'</td><td>'+fmtTgl(d.activity_date || d.tanggal)+'</td><td>'+(d.activity_time||'')+'</td>'
-      + '<td class="imgcell">'+(d.foto_url?'<img src="'+d.foto_url+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
-      + '<td class="desk">'+(d.uraian || d.description || d.keterangan || '')+'</td>'
+      + '<td class="imgcell">'+((d.photo_url||d.foto_url)?'<img src="'+(d.photo_url||d.foto_url)+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
+      + '<td class="desk">'+(d.description || d.uraian || d.keterangan || '')+(d.latitude!=null&&d.longitude!=null?'<div class="gps-info">GPS: '+Number(d.latitude).toFixed(6)+', '+Number(d.longitude).toFixed(6)+'</div>':'')+'</td>'
       + '<td><button class="btn-danger" onclick="hapusBaris('+d.id+')">Hapus</button></td></tr>';
   });
   html += '</tbody></table>';
@@ -699,10 +789,15 @@ async function tambahDataHadir(){
     st.textContent = 'Menyiapkan report...';
     const report = await ensureCurrentReport();
     st.textContent = 'Menyimpan data...';
-    const { error } = await sb.from('attendance').insert({
-      report_id: report.id, attendance_date: tanggal,
-      foto_datang_url: fotoDatangUrl, foto_pulang_url: fotoPulangUrl
-    });
+    const location = await getLocationSafe();
+    const { error } = await sb.from('attendance').upsert({
+      report_id: report.id,
+      attendance_date: tanggal,
+      check_in_photo: fotoDatangUrl,
+      check_in_time: new Date().toISOString(),
+      check_in_latitude: location?.latitude ?? null,
+      check_in_longitude: location?.longitude ?? null
+    }, {onConflict:'report_id,attendance_date'});
     if(error) throw error;
     st.textContent = 'Tersimpan.';
     document.getElementById('fh_tanggal').value='';
@@ -714,11 +809,32 @@ async function tambahDataHadir(){
     setupHadirBox('box_foto_datang','fh_foto_datang','datang');
     setupHadirBox('box_foto_pulang','fh_foto_pulang','pulang');
     await muatDataHadir();
+    updateReportStatusUI(currentReport);
+    if(isAdmin) await loadAdminDashboard();
   }catch(e){
     st.textContent='';
     alert('Gagal menyimpan: '+e.message);
   }finally{ btn.disabled = false; }
 }
+async function pulangAttendance(attendanceId){
+  try{
+    const location=await getLocationSafe();
+    let fotoUrl='';
+    const inp=document.getElementById('checkout_'+attendanceId);
+    if(inp?.files?.[0]){
+      fotoUrl=await uploadToCloudinary(inp.files[0]);
+    }
+    const {error}=await sb.from('attendance').update({
+      check_out_photo:fotoUrl,
+      check_out_time:new Date().toISOString(),
+      check_out_latitude:location?.latitude ?? null,
+      check_out_longitude:location?.longitude ?? null
+    }).eq('id',attendanceId);
+    if(error) throw error;
+    await muatDataHadir();
+  }catch(e){alert('Gagal menyimpan kepulangan: '+e.message);}
+}
+
 async function hapusBarisHadir(id){
   try{
     const { error } = await sb.from('attendance').delete().eq('id', id);
@@ -730,16 +846,54 @@ function renderTableHadir(){
   document.getElementById('countHadir').textContent = currentDataHadir.length;
   const holder = document.getElementById('tableHolderHadir');
   if(currentDataHadir.length===0){ holder.innerHTML = '<div class="empty">Belum ada data untuk Nama+Bulan ini.</div>'; return; }
-  let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Data Dukung Kehadiran Datang</th><th>Data Dukung Kehadiran Pulang</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Data Dukung Kehadiran Datang</th><th>Data Dukung Kehadiran Pulang</th><th>Aksi</th></tr></thead><tbody>';
   currentDataHadir.forEach((d,i)=>{
+    const checkoutAction=d.check_out_time
+      ? '<div class="small">'+new Date(d.check_out_time).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})+'</div>'
+      : '<input id="checkout_'+d.id+'" type="file" accept="image/*" style="max-width:150px;margin-bottom:4px"><br><button class="btn-ghost" onclick="pulangAttendance('+d.id+')">Simpan Pulang</button>';
     html += '<tr><td>'+(i+1)+'</td><td>'+fmtTgl(d.attendance_date || d.tanggal)+'</td>'
-      + '<td class="imgcell">'+(d.foto_datang_url?'<img src="'+d.foto_datang_url+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
-      + '<td class="imgcell">'+(d.foto_pulang_url?'<img src="'+d.foto_pulang_url+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
-      + '<td><button class="btn-danger" onclick="hapusBarisHadir('+d.id+')">Hapus</button></td></tr>';
+      + '<td class="imgcell">'+((d.check_in_photo||d.foto_datang_url)?'<img src="'+(d.check_in_photo||d.foto_datang_url)+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
+      + '<td class="imgcell">'+((d.check_out_photo||d.foto_pulang_url)?'<img src="'+(d.check_out_photo||d.foto_pulang_url)+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
+      + '<td>'+checkoutAction+'<br><button class="btn-danger" onclick="hapusBarisHadir('+d.id+')">Hapus</button></td></tr>';
   });
   html += '</tbody></table>';
   holder.innerHTML = html;
 }
+async function loadAdminDashboard(){
+  const holder=document.getElementById('adminReportHolder');
+  if(!isAdmin || !holder) return;
+  try{
+    const {year,month}=getYearMonth();
+    const {data,error}=await sb.from('reports').select(`id,year,month,status,submitted_at,employee:employees(id,employee_number,name,department,position),activities(id),attendance(id)`).eq('year',year).eq('month',month);
+    if(error) throw error;
+    const rows=data||[];
+    if(!rows.length){holder.innerHTML='<div class="empty">Belum ada report untuk periode ini.</div>';return;}
+    let html='<table><thead><tr><th>Pegawai</th><th>Department</th><th>Position</th><th>Status</th><th>Kegiatan</th><th>Attendance</th><th>Aksi</th></tr></thead><tbody>';
+    rows.forEach(r=>{
+      const e=r.employee||{};
+      html+='<tr><td class="desk">'+(e.name||'-')+'</td><td>'+(e.department||'-')+'</td><td>'+(e.position||'-')+'</td><td>'+(r.status||'draft')+'</td><td>'+((r.activities||[]).length)+'</td><td>'+((r.attendance||[]).length)+'</td><td>'
+        +((r.status==='submitted')?'<button class="btn-primary" onclick="reviewReport('+r.id+',\'approved\')">Approve</button> <button class="btn-ghost" onclick="reviewReport('+r.id+',\'revision\')">Revision</button>':'-')+'</td></tr>';
+    });
+    html+='</tbody></table>'; holder.innerHTML=html;
+  }catch(e){holder.innerHTML='<div class="empty">Gagal memuat dashboard: '+e.message+'</div>';}
+}
+
+async function reviewReport(reportId,status){
+  if(!isAdmin) return;
+  if(!['approved','revision'].includes(status)) return;
+  const label=status==='approved'?'Approve':'Request Revision';
+  if(!confirm(label+' report ini?')) return;
+  try{
+    const {error}=await sb.from('reports').update({status}).eq('id',reportId);
+    if(error) throw error;
+    await loadAdminDashboard();
+    if(currentReportId===reportId){
+      currentReport=await sb.from('reports').select('*').eq('id',reportId).single().then(r=>r.data);
+      updateReportStatusUI(currentReport);
+    }
+  }catch(e){alert('Gagal mengubah status report: '+e.message);}
+}
+
 async function unduhWord(){
   if(currentData.length===0){ alert('Belum ada data untuk diunduh. Klik "Muat Data" dulu.'); return; }
   if(typeof docx === 'undefined'){
@@ -819,7 +973,7 @@ async function unduhWord(){
         cell([p(String(i+1))], 0),
         cell([p(fmtTgl(d.tanggal))], 1),
         cell([imgPara], 2),
-        cell([new Paragraph({ children:[new TextRun(d.uraian || d.description || d.keterangan || '')] })], 3),
+        cell([new Paragraph({ children:[new TextRun(d.description || d.uraian || d.keterangan || '')] })], 3),
       ]}));
     }
 
