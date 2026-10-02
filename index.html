@@ -1014,6 +1014,82 @@ async function reviewReport(reportId,status){
   }catch(e){alert('Gagal mengubah status report: '+e.message);}
 }
 
+
+/* ---------- Helper foto untuk Word ---------- */
+/*
+  Foto di database V2 memakai:
+  - activities.photo_url
+  - attendance.check_in_photo / check_out_photo
+
+  docx.js menerima image data sebagai Uint8Array/ArrayBuffer.
+  Kita gunakan Uint8Array agar konsisten di browser.
+*/
+async function getWordImage(url){
+  if(!url) return null;
+
+  let imageUrl = String(url).trim();
+
+  // Cloudinary: paksa format JPEG agar format yang diberikan ke docx.js
+  // selalu cocok dengan byte gambar yang diunduh.
+  if(imageUrl.includes('/image/upload/') && !imageUrl.includes('/f_jpg/')){
+    imageUrl = imageUrl.replace('/image/upload/', '/image/upload/f_jpg/');
+  }
+
+  const res = await fetch(imageUrl, {
+    method: 'GET',
+    mode: 'cors',
+    cache: 'no-store'
+  });
+
+  if(!res.ok){
+    throw new Error('Foto tidak dapat diambil (HTTP '+res.status+').');
+  }
+
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  const bytes = new Uint8Array(await res.arrayBuffer());
+
+  if(!bytes.length){
+    throw new Error('Data foto kosong.');
+  }
+
+  let type = 'jpg';
+  if(contentType.includes('png')) type = 'png';
+  else if(contentType.includes('gif')) type = 'gif';
+  else if(contentType.includes('bmp')) type = 'bmp';
+  else if(contentType.includes('jpeg') || contentType.includes('jpg')) type = 'jpg';
+
+  return { data: bytes, type };
+}
+
+async function fotoParagraphWord(url, width=160, height=120){
+  if(!url) return new Paragraph('-');
+
+  try{
+    const image = await getWordImage(url);
+    return new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [
+        new ImageRun({
+          data: image.data,
+          type: image.type,
+          transformation: { width, height }
+        })
+      ]
+    });
+  }catch(e){
+    console.error('Gagal memuat foto untuk Word:', url, e);
+    return new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [
+        new TextRun({
+          text: '(foto gagal dimuat)',
+          size: 18
+        })
+      ]
+    });
+  }
+}
+
 async function unduhWord(){
   if(currentData.length===0){ alert('Belum ada data untuk diunduh. Klik "Muat Data" dulu.'); return; }
   if(typeof docx === 'undefined'){
@@ -1079,16 +1155,11 @@ async function unduhWord(){
     const dataRows = [];
     for(let i=0;i<currentData.length;i++){
       const d = currentData[i];
-      let imgPara;
-      if(d.foto_url){
-        try{
-          const res = await fetch(d.foto_url);
-          const buf = await res.arrayBuffer();
-          imgPara = new Paragraph({ alignment: AlignmentType.CENTER, children:[
-            new ImageRun({ data: buf, type:'jpg', transformation:{ width:160, height:120 } })
-          ]});
-        }catch(e){ imgPara = p('(foto gagal dimuat)'); }
-      } else { imgPara = p('-'); }
+      const imgPara = await fotoParagraphWord(
+        d.photo_url || d.foto_url,
+        160,
+        120
+      );
       dataRows.push(new TableRow({ children:[
         cell([p(String(i+1))], 0),
         cell([p(fmtTgl(d.tanggal))], 1),
@@ -1153,7 +1224,7 @@ async function unduhWord(){
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }catch(e){
-    alert('Gagal membuat file Word: '+e.message);
+    console.error('Gagal membuat file Word:', e); alert('Gagal membuat file Word: '+e.message);
   }finally{ if(btn) btn.disabled = false; }
 }
 
@@ -1206,20 +1277,19 @@ async function unduhWordHadir(){
       new Paragraph({ children:[ new TextRun('Bulan : '+bulan) ] }),
     ]});
 
-    async function fotoParagraph(url){
-      if(!url) return p('-');
-      try{
-        const res = await fetch(url);
-        const buf = await res.arrayBuffer();
-        return new Paragraph({ alignment: AlignmentType.CENTER, children:[ new ImageRun({ data: buf, type:'jpg', transformation:{ width:150, height:150 } }) ] });
-      }catch(e){ return p('(foto gagal dimuat)'); }
-    }
-
     const dataRows = [];
     for(let i=0;i<currentDataHadir.length;i++){
       const d = currentDataHadir[i];
-      const fotoDatang = await fotoParagraph(d.foto_datang_url);
-      const fotoPulang = await fotoParagraph(d.foto_pulang_url);
+      const fotoDatang = await fotoParagraphWord(
+        d.check_in_photo || d.foto_datang_url,
+        150,
+        150
+      );
+      const fotoPulang = await fotoParagraphWord(
+        d.check_out_photo || d.foto_pulang_url,
+        150,
+        150
+      );
       dataRows.push(new TableRow({ children:[
         cell([p(String(i+1))], 0),
         cell([p(fmtTgl(d.tanggal))], 1),
@@ -1279,7 +1349,7 @@ async function unduhWordHadir(){
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }catch(e){
-    alert('Gagal membuat file Word: '+e.message);
+    console.error('Gagal membuat file Word:', e); alert('Gagal membuat file Word: '+e.message);
   }finally{ if(btn) btn.disabled = false; }
 }
 </script>
