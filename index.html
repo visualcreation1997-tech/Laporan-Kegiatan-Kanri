@@ -20,6 +20,7 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:10px 0 4px;}
 input[type=text],input[type=date],textarea,select{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.9rem;}
 textarea{resize:vertical;min-height:50px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+@media (min-width:760px){.grid2{grid-template-columns:1fr 1fr;}}
 .file-box{border:1.5px dashed var(--border);border-radius:8px;padding:10px;text-align:center;font-size:.8rem;color:var(--muted);cursor:pointer;position:relative;overflow:hidden;min-height:80px;display:flex;align-items:center;justify-content:center;}
 .file-box img{max-width:100%;max-height:100px;border-radius:6px;}
 .file-box input{position:absolute;inset:0;opacity:0;cursor:pointer;}
@@ -77,6 +78,8 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
     <input id="subjudul" type="text" placeholder="Contoh: Belanja Jasa Untuk Tenaga Kebersihan (Satgas)">
     <div class="grid2">
       <div><label>Nama Pegawai</label><input id="nama" type="text" placeholder="Nama lengkap" list="namaListOptions"><datalist id="namaListOptions"></datalist></div>
+      <div><label>Department</label><input id="employee_department" type="text" placeholder="Department" readonly></div>
+      <div><label>Position</label><input id="employee_position" type="text" placeholder="Position" readonly></div>
       <div><label>Bulan</label>
         <div style="display:flex;gap:6px">
           <select id="bulan_nama" onchange="saveInfo()" style="flex:1.3"></select>
@@ -287,77 +290,30 @@ async function pilihPegawaiDariSelect(nama){
   document.getElementById('adminNamaSelect').value = nama;
   document.getElementById('adminNamaSelectHadir').value = nama;
   document.getElementById('nama').value = nama;
+  // Jika admin memilih pegawai lain, sinkronkan Department/Position dari tabel employees.
+  try{
+    const { data: selectedEmployee } = await sb
+      .from('employees')
+      .select('*')
+      .eq('name', nama)
+      .limit(1)
+      .maybeSingle();
+    if(selectedEmployee){
+      currentEmployee = selectedEmployee;
+      document.getElementById('employee_department').value = selectedEmployee.department || '';
+      document.getElementById('employee_position').value = selectedEmployee.position || '';
+    }
+  }catch(e){
+    console.warn('Profil employee pilihan admin tidak dapat dimuat:', e);
+  }
   saveInfo();
   const bulan = getBulan();
   if(!bulan){ alert('Isi Bulan dulu (di atas), baru pilih nama pegawai.'); return; }
   await (activeTab==='hadir' ? muatDataHadir() : muatData());
 }
 
-/* ---------- Pemetaan username -> nama asli karyawan (Kanri001 sengaja tidak dimasukkan) ---------- */
-const NAMA_PEGAWAI_MAP = {
-  "Kanri002": "Nurlaili Alfisyah",
-  "Kanri003": "Reza Pusparani Pertiwi",
-  "Kanri004": "Ega Amaylia",
-  "Kanri005": "Putri Syahida Karbala",
-  "Kanri006": "Lucky Asprilla",
-  "Kanri007": "Jeva Mahardiyan",
-  "Kanri008": "Anita Septianah",
-  "Kanri009": "Mariyah Ulfah",
-  "Kanri010": "Istiqomatul Ilmia",
-  "Kanri011": "Hasmiawati",
-  "Kanri012": "Adellia Eka Kartikasari",
-  "Kanri013": "Yulia Masruroh",
-  "Kanri014": "Sherlien Amelia Putri",
-  "Kanri015": "Anisyah Kartika Arrozid",
-  "Kanri016": "Bintang Maulana Alamsyah Gunawan",
-  "Kanri017": "Achmad Wahyudi",
-  "Kanri018": "Fajar Ismail",
-  "Kanri019": "Dano Ade Kennedy",
-  "Kanri020": "Resha Azza Shoftarahmansyah",
-  "Kanri021": "Wahyu Mukti",
-  "Kanri022": "Maulana Yuda Anugrah",
-  "Kanri023": "Umi Chanifah",
-  "Kanri024": "Heri Sutiyono",
-  "Kanri025": "Sujiati",
-  "Kanri026": "Muryani",
-  "Kanri027": "Nur Alfiyah",
-  "Kanri028": "Nanda Rizky Amartha",
-  "Kanri029": "Yanti",
-  "Kanri030": "Mohammad Rizky Nur Yahya",
-  "Kanri031": "Prayoga Rivanda",
-  "Kanri032": "Sri Temon",
-  "Kanri033": "Nita Jayanti",
-  "Kanri034": "Besari",
-  "Kanri035": "Gunarto",
-  "Kanri036": "Edi Buwono",
-  "Kanri037": "Didik Indri Arifin",
-  "Kanri038": "Trimulyo Hadi Wibowo",
-  "Kanri039": "Awalludin Rizal Afgandi",
-  "Kanri040": "Ahmad Zubair Firmansyah",
-  "Kanri041": "Misbahul Munir",
-  "Kanri042": "Moch. Junaedi Abdillah",
-  "Kanri043": "Afif Soelistiyono",
-  "Kanri044": "Rudi Kurniawan",
-  "Kanri045": "Cheryl Audreyvana Harvienanda",
-  "Kanri046": "Dwi Nur Bagus Rohman",
-  "Kanri047": "Ach. Mashadi",
-  "Kanri048": "Kiano Ardeny",
-  "Kanri049": "Kriswanto",
-  "Kanri050": "Dhani Ahmad Riyantono",
-  "Kanri051": "Aprianto",
-  "Kanri052": "Eko Pramanto",
-  "Kanri053": "Nazaruddin Fauzi Effendy",
-  "Kanri054": "Luluk Subandiyono",
-  "Kanri055": "Ahmad Pandu Prayoga",
-  "Kanri056": "Mochammad Ardani",
-  "Kanri057": "Karina Ramadini Puspasari",
-  "Kanri058": "Endang Subandiyah",
-  "Kanri059": "Nia Oktaviana",
-  "Kanri060": "Riani",
-  "Kanri061": "Murtafi'ah",
-  "Kanri062": "Sakti Setyowati",
-  "Kanri063": "Sela Sihwinantu"
-};
+/* ---------- Profil employee dari Supabase ---------- */
+let currentEmployee = null;
 
 /* ---------- Login / sesi ---------- */
 async function doLogin(){
@@ -379,11 +335,52 @@ async function doLogout(){
 async function showApp(){
   document.getElementById('loginCard').style.display='none';
   document.getElementById('appContent').style.display='block';
-  const { data:{ user } } = await sb.auth.getUser();
+
+  // 1. Ambil user yang sedang login dari Supabase Auth
+  const { data:{ user }, error: userError } = await sb.auth.getUser();
+  if(userError || !user){
+    console.error('Gagal mengambil user:', userError);
+    alert('Sesi login tidak ditemukan. Silakan login kembali.');
+    return;
+  }
+
+  // 2. Ambil profil employee berdasarkan user.id
+  //    Struktur ini mengikuti alur: Auth user -> employees.user_id -> data employee.
+  const { data: employee, error: employeeError } = await sb
+    .from('employees')
+    .select('*')
+    .eq('user_id', user.id)
+    .single();
+
+  if(employeeError || !employee){
+    console.error('Gagal mengambil data employee:', employeeError);
+    alert('Data pegawai untuk akun ini belum ditemukan di tabel employees.\n\nPastikan kolom user_id pada tabel employees berisi user.id dari Supabase Auth.');
+    return;
+  }
+
+  // 3. Simpan profil employee agar bisa dipakai oleh fitur lain
+  currentEmployee = employee;
+
+  // Field yang digunakan mengikuti contoh pada dokumentasi: id, name, department, position.
+  const employeeName = employee.name || '';
+  const employeeDepartment = employee.department || '';
+  const employeePosition = employee.position || '';
+
+  // 4. Tampilkan data employee di frontend
+  document.getElementById('nama').value = employeeName;
+  document.getElementById('employee_department').value = employeeDepartment;
+  document.getElementById('employee_position').value = employeePosition;
+
   const uname = user?.user_metadata?.username || '';
   isAdmin = user?.app_metadata?.role === 'admin';
-  document.getElementById('whoami').textContent = uname ? ('Masuk sebagai '+uname+(isAdmin?' (Admin)':'')) : '';
-  if(uname && !document.getElementById('nama').value && NAMA_PEGAWAI_MAP[uname]) document.getElementById('nama').value = NAMA_PEGAWAI_MAP[uname];
+
+  document.getElementById('whoami').textContent =
+    uname ? ('Masuk sebagai '+uname+(isAdmin?' (Admin)':'')) : employeeName;
+
+  // Pegawai biasa menggunakan data employee dari akun login.
+  // Admin tetap dapat memilih pegawai melalui kontrol admin yang sudah ada.
+  document.getElementById('nama').readOnly = !isAdmin;
+
   document.getElementById('ppkSaveRow').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('ppkNonAdminNote').style.display = isAdmin ? 'none' : 'block';
   document.getElementById('btnHapusSemuaKegiatan').style.display = isAdmin ? 'inline-block' : 'none';
@@ -391,11 +388,13 @@ async function showApp(){
   document.getElementById('hapusBulanKegiatan').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('hapusBulanHadir').style.display = isAdmin ? 'inline-block' : 'none';
   ['ppk_nama','ppk_jabatan','ppk_nip'].forEach(id=>document.getElementById(id).disabled = !isAdmin);
+
   await loadPPKInfo();
   if(isAdmin) await loadNamaList();
   if(isAdmin) await loadBulanHapusList();
   if(getBulan()) muatData();
 }
+
 window.addEventListener('load', async ()=>{
   const { data:{ session } } = await sb.auth.getSession();
   if(session) showApp();
