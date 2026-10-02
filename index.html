@@ -82,8 +82,8 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
       <div><label>Position</label><input id="employee_position" type="text" placeholder="Position" readonly></div>
       <div><label>Bulan</label>
         <div style="display:flex;gap:6px">
-          <select id="bulan_nama" onchange="saveInfo()" style="flex:1.3"></select>
-          <select id="bulan_tahun" onchange="saveInfo()" style="flex:1"></select>
+          <select id="bulan_nama" onchange="saveInfo(); refreshCurrentReport()" style="flex:1.3"></select>
+          <select id="bulan_tahun" onchange="saveInfo(); refreshCurrentReport()" style="flex:1"></select>
         </div>
       </div>
     </div>
@@ -201,6 +201,8 @@ let currentData = [];
 let currentDataHadir = [];
 let isAdmin = false;
 let activeTab = 'kegiatan';
+let currentReport = null;
+let currentReportId = null;
 
 function switchTab(tab){
   activeTab = tab;
@@ -255,60 +257,51 @@ async function loadNamaList(){
   const sel = document.getElementById('adminNamaSelect');
   const cardHadir = document.getElementById('adminNamaCardHadir');
   const selHadir = document.getElementById('adminNamaSelectHadir');
-  card.style.display = 'block';
-  cardHadir.style.display = 'block';
+  card.style.display = 'block'; cardHadir.style.display = 'block';
   try{
-    // Gabungkan nama dari tabel kegiatan DAN kehadiran, supaya pegawai yang baru mengisi
-    // salah satunya saja (belum tentu dua-duanya) tetap muncul di daftar admin.
-    const [{ data:dataKeg, error:errKeg }, { data:dataHad, error:errHad }] = await Promise.all([
-      sb.from('kegiatan').select('nama_pegawai'),
-      sb.from('kehadiran').select('nama_pegawai')
-    ]);
-    if(errKeg) throw errKeg;
-    if(errHad) throw errHad;
-    const names = [...new Set([...(dataKeg||[]), ...(dataHad||[])].map(d=>d.nama_pegawai).filter(Boolean))].sort();
-    const dl = document.getElementById('namaListOptions');
-    dl.innerHTML = names.map(n=>'<option value="'+n.replace(/"/g,'&quot;')+'">').join('');
-    if(names.length===0){
-      const pesan = '<option value="">Belum ada data sama sekali</option>';
-      sel.innerHTML = pesan; selHadir.innerHTML = pesan;
-      return;
+    const { data: employees, error } = await sb.from('employees')
+      .select('id,user_id,name,department,position').order('name',{ascending:true});
+    if(error) throw error;
+    const rows=(employees||[]).filter(e=>e.name);
+    document.getElementById('namaListOptions').innerHTML = rows.map(e=>
+      '<option value="'+String(e.name).replace(/"/g,'&quot;')+'">').join('');
+    if(!rows.length){
+      const msg='<option value="">Belum ada data pegawai</option>';
+      sel.innerHTML=msg; selHadir.innerHTML=msg; return;
     }
-    const namaAktif = document.getElementById('nama').value.trim();
-    const optsHtml = '<option value="">— Semua Pegawai ('+names.length+' orang) —</option>' + names.map(n=>
-      '<option value="'+n.replace(/"/g,'&quot;')+'">'+n+'</option>'
-    ).join('');
-    sel.innerHTML = optsHtml;
-    selHadir.innerHTML = optsHtml;
-    sel.value = namaAktif; selHadir.value = namaAktif;
+    const namaAktif=document.getElementById('nama').value.trim();
+    const opts='<option value="">— Semua Pegawai ('+rows.length+' orang) —</option>'+rows.map(e=>
+      '<option value="'+String(e.name).replace(/"/g,'&quot;')+'">'+e.name+'</option>').join('');
+    sel.innerHTML=opts; selHadir.innerHTML=opts; sel.value=namaAktif; selHadir.value=namaAktif;
   }catch(e){
-    const pesan = '<option value="">Gagal memuat: '+e.message+'</option>';
-    sel.innerHTML = pesan; selHadir.innerHTML = pesan;
+    const msg='<option value="">Gagal memuat: '+e.message+'</option>';
+    sel.innerHTML=msg; selHadir.innerHTML=msg;
   }
 }
 async function pilihPegawaiDariSelect(nama){
-  document.getElementById('adminNamaSelect').value = nama;
-  document.getElementById('adminNamaSelectHadir').value = nama;
-  document.getElementById('nama').value = nama;
-  // Jika admin memilih pegawai lain, sinkronkan Department/Position dari tabel employees.
-  try{
-    const { data: selectedEmployee } = await sb
-      .from('employees')
-      .select('*')
-      .eq('name', nama)
-      .limit(1)
-      .maybeSingle();
-    if(selectedEmployee){
-      currentEmployee = selectedEmployee;
-      document.getElementById('employee_department').value = selectedEmployee.department || '';
-      document.getElementById('employee_position').value = selectedEmployee.position || '';
-    }
-  }catch(e){
-    console.warn('Profil employee pilihan admin tidak dapat dimuat:', e);
+  document.getElementById('adminNamaSelect').value=nama;
+  document.getElementById('adminNamaSelectHadir').value=nama;
+  document.getElementById('nama').value=nama;
+  if(!nama){
+    currentEmployee=null; currentReport=null; currentReportId=null;
+    document.getElementById('employee_department').value='';
+    document.getElementById('employee_position').value='';
+    saveInfo();
+    if(getBulan()){ await muatData(); await muatDataHadir(); }
+    return;
   }
+  try{
+    const {data:selectedEmployee,error}=await sb.from('employees').select('id,user_id,name,department,position')
+      .eq('name',nama).limit(1).maybeSingle();
+    if(error) throw error;
+    if(selectedEmployee){
+      currentEmployee=selectedEmployee;
+      document.getElementById('employee_department').value=selectedEmployee.department||'';
+      document.getElementById('employee_position').value=selectedEmployee.position||'';
+    }
+  }catch(e){ console.warn('Profil employee pilihan admin tidak dapat dimuat:',e); }
   saveInfo();
-  const bulan = getBulan();
-  if(!bulan){ alert('Isi Bulan dulu (di atas), baru pilih nama pegawai.'); return; }
+  if(!getBulan()){ alert('Isi Bulan dulu (di atas), baru pilih nama pegawai.'); return; }
   await (activeTab==='hadir' ? muatDataHadir() : muatData());
 }
 
@@ -392,7 +385,7 @@ async function showApp(){
   await loadPPKInfo();
   if(isAdmin) await loadNamaList();
   if(isAdmin) await loadBulanHapusList();
-  if(getBulan()) muatData();
+  if(getBulan()) { await muatData(); await muatDataHadir(); }
 }
 
 window.addEventListener('load', async ()=>{
@@ -457,48 +450,77 @@ async function simpanPPKInfo(){
   }
 }
 
+/* ---------- Reports: satu report aktif untuk satu employee + tahun + bulan ---------- */
+function getYearMonth(){
+  const monthIndex=BULAN_NAMES.indexOf(document.getElementById('bulan_nama').value);
+  return {year:Number(document.getElementById('bulan_tahun').value),month:monthIndex+1};
+}
+async function getCurrentReport(employeeId,year,month){
+  if(!employeeId) return null;
+  const {data,error}=await sb.from('reports').select('*').eq('employee_id',employeeId)
+    .eq('year',year).eq('month',month).maybeSingle();
+  if(error) throw error; return data||null;
+}
+async function createReport(employeeId,year,month){
+  const {data,error}=await sb.from('reports').insert({employee_id:employeeId,year,month,status:'draft'}).select().single();
+  if(error) throw error; return data;
+}
+async function ensureCurrentReport(){
+  if(!currentEmployee?.id) throw new Error('Data employee belum tersedia.');
+  const {year,month}=getYearMonth();
+  let report=await getCurrentReport(currentEmployee.id,year,month);
+  if(!report) report=await createReport(currentEmployee.id,year,month);
+  currentReport=report; currentReportId=report.id; return report;
+}
+async function refreshCurrentReport(){
+  if(!getBulan()) return;
+  if(activeTab==='hadir') await muatDataHadir(); else await muatData();
+}
+
 /* ---------- Muat data dari Supabase berdasar Nama+Bulan ---------- */
 async function muatData(){
   saveInfo();
-  const bulan = getBulan();
-  const nama = document.getElementById('nama').value.trim();
-  const st = document.getElementById('loadStatus');
-  if(!bulan){ alert('Pilih Bulan dulu.'); return; }
-  st.textContent = 'Memuat...';
+  const bulan=getBulan(), nama=document.getElementById('nama').value.trim(), st=document.getElementById('loadStatus');
+  if(!bulan){alert('Pilih Bulan dulu.');return;}
+  st.textContent='Memuat report...';
   try{
-    // PERBAIKAN: sebelumnya filter nama hanya dipakai untuk admin, dengan asumsi RLS sudah membatasi
-    // pegawai biasa ke datanya sendiri. Ternyata asumsi itu salah -> pegawai biasa bisa melihat data
-    // pegawai lain. Sekarang filter nama_pegawai SELALU dipakai kalau field Nama terisi (baik admin
-    // maupun bukan). Admin bisa mengosongkan Nama (lewat dropdown "Semua Pegawai") untuk melihat semua.
-    let query = sb.from('kegiatan').select('*').eq('bulan', bulan).order('tanggal', {ascending:true});
-    if(nama) query = query.eq('nama_pegawai', nama);
-    const { data, error } = await query;
-    if(error) throw error;
-    currentData = data || [];
-    renderTable();
-    st.textContent = currentData.length+' data dimuat dari server.';
-  }catch(e){
-    st.textContent = '';
-    alert('Gagal memuat data: '+e.message);
-  }
+    let employee=currentEmployee;
+    if(!employee && nama){
+      const {data,error}=await sb.from('employees').select('id,user_id,name,department,position').eq('name',nama).limit(1).maybeSingle();
+      if(error) throw error; employee=data;
+    }
+    if(!employee){
+      currentReport=null; currentReportId=null;
+      const {data,error}=await sb.from('activities').select('*').order('activity_date',{ascending:true}).order('activity_time',{ascending:true});
+      if(error) throw error; currentData=data||[]; renderTable(); st.textContent=currentData.length+' kegiatan dimuat.'; return;
+    }
+    currentEmployee=employee;
+    const {year,month}=getYearMonth();
+    currentReport=await getCurrentReport(employee.id,year,month); currentReportId=currentReport?.id||null;
+    if(!currentReport){currentData=[];renderTable();st.textContent='Belum ada report untuk '+employee.name+' pada '+bulan+'.';return;}
+    const {data,error}=await sb.from('activities').select('*').eq('report_id',currentReport.id)
+      .order('activity_date',{ascending:true}).order('activity_time',{ascending:true});
+    if(error) throw error; currentData=data||[]; renderTable();
+    st.textContent=currentData.length+' kegiatan dimuat dari report #'+currentReport.id+'.';
+  }catch(e){st.textContent='';alert('Gagal memuat report/kegiatan: '+e.message);}
 }
-
-/* ---------- Muat data Kehadiran (Datang/Pulang) dari Supabase ---------- */
 async function muatDataHadir(){
-  saveInfo();
-  const bulan = getBulan();
-  const nama = document.getElementById('nama').value.trim();
-  if(!bulan) return;
+  saveInfo(); const bulan=getBulan(), nama=document.getElementById('nama').value.trim(); if(!bulan)return;
   try{
-    let query = sb.from('kehadiran').select('*').eq('bulan', bulan).order('tanggal', {ascending:true});
-    if(nama) query = query.eq('nama_pegawai', nama);
-    const { data, error } = await query;
-    if(error) throw error;
-    currentDataHadir = data || [];
-    renderTableHadir();
-  }catch(e){
-    alert('Gagal memuat data kehadiran: '+e.message);
-  }
+    let employee=currentEmployee;
+    if(!employee && nama){
+      const {data,error}=await sb.from('employees').select('id,user_id,name,department,position').eq('name',nama).limit(1).maybeSingle();
+      if(error) throw error; employee=data;
+    }
+    if(!employee){currentDataHadir=[];renderTableHadir();return;}
+    currentEmployee=employee;
+    const {year,month}=getYearMonth();
+    currentReport=await getCurrentReport(employee.id,year,month); currentReportId=currentReport?.id||null;
+    if(!currentReport){currentDataHadir=[];renderTableHadir();return;}
+    const {data,error}=await sb.from('attendance').select('*').eq('report_id',currentReport.id)
+      .order('attendance_date',{ascending:true});
+    if(error) throw error; currentDataHadir=data||[]; renderTableHadir();
+  }catch(e){alert('Gagal memuat data kehadiran: '+e.message);}
 }
 
 /* ---------- Upload & kompres foto, lalu unggah ke Cloudinary ---------- */
@@ -585,9 +607,13 @@ async function tambahData(){
       st.textContent = 'Mengunggah foto...';
       fotoUrl = await uploadToCloudinary(pendingBlob);
     }
+    st.textContent = 'Menyiapkan report...';
+    const report = await ensureCurrentReport();
     st.textContent = 'Menyimpan data...';
-    const { error } = await sb.from('kegiatan').insert({
-      nama_pegawai: nama, bulan: bulan, tanggal: tanggal, uraian: desk, foto_url: fotoUrl
+    const activityTime = new Date().toTimeString().slice(0,5);
+    const { error } = await sb.from('activities').insert({
+      report_id: report.id, activity_date: tanggal, activity_time: activityTime,
+      uraian: desk, foto_url: fotoUrl
     });
     if(error) throw error;
     st.textContent = 'Tersimpan.';
@@ -605,50 +631,36 @@ async function tambahData(){
 }
 async function hapusBaris(id){
   try{
-    const { error } = await sb.from('kegiatan').delete().eq('id', id);
+    const { error } = await sb.from('activities').delete().eq('id', id);
     if(error) throw error;
     await muatData();
   }catch(e){ alert('Gagal menghapus: '+e.message); }
 }
 async function loadBulanHapusList(){
-  if(!isAdmin) return;
-  const selK = document.getElementById('hapusBulanKegiatan');
-  const selH = document.getElementById('hapusBulanHadir');
+  if(!isAdmin)return;
+  const selK=document.getElementById('hapusBulanKegiatan'),selH=document.getElementById('hapusBulanHadir');
   try{
-    const [{ data:dataKeg, error:errKeg }, { data:dataHad, error:errHad }] = await Promise.all([
-      sb.from('kegiatan').select('bulan'),
-      sb.from('kehadiran').select('bulan')
-    ]);
-    if(errKeg) throw errKeg;
-    if(errHad) throw errHad;
-    const bulanKeg = sortBulanList([...new Set((dataKeg||[]).map(d=>d.bulan).filter(Boolean))]);
-    const bulanHad = sortBulanList([...new Set((dataHad||[]).map(d=>d.bulan).filter(Boolean))]);
-    const cur = getBulan();
-    selK.innerHTML = bulanKeg.length ? bulanKeg.map(b=>'<option value="'+b+'">'+b+'</option>').join('') : '<option value="">(belum ada data)</option>';
-    selH.innerHTML = bulanHad.length ? bulanHad.map(b=>'<option value="'+b+'">'+b+'</option>').join('') : '<option value="">(belum ada data)</option>';
-    if(bulanKeg.includes(cur)) selK.value = cur;
-    if(bulanHad.includes(cur)) selH.value = cur;
-  }catch(e){
-    selK.innerHTML = '<option value="">Gagal memuat</option>';
-    selH.innerHTML = '<option value="">Gagal memuat</option>';
-  }
+    const {data:reports,error}=await sb.from('reports').select('id,year,month'); if(error)throw error;
+    const list=sortBulanList([...new Set((reports||[]).map(r=>BULAN_NAMES[Number(r.month)-1]+' '+r.year))]);
+    const cur=getBulan(),html=list.length?list.map(b=>'<option value="'+b+'">'+b+'</option>').join(''):'<option value="">(belum ada report)</option>';
+    selK.innerHTML=html;selH.innerHTML=html;if(list.includes(cur)){selK.value=cur;selH.value=cur;}
+  }catch(e){selK.innerHTML='<option value="">Gagal memuat</option>';selH.innerHTML='<option value="">Gagal memuat</option>';}
 }
 /* ---------- (Admin) Hapus semua data untuk 1 bulan pilihan dari dropdown (bukan otomatis ikut Bulan di atas) ---------- */
 async function hapusSemuaBulan(jenis){
-  if(!isAdmin){ alert('Hanya admin yang bisa menghapus semua data.'); return; }
-  const selId = jenis==='kegiatan' ? 'hapusBulanKegiatan' : 'hapusBulanHadir';
-  const bulanPilihan = document.getElementById(selId).value;
-  if(!bulanPilihan){ alert('Pilih dulu bulan yang mau dihapus.'); return; }
-  const label = jenis==='kegiatan' ? 'Kegiatan' : 'Kehadiran';
-  if(!confirm('Hapus SEMUA data '+label+' (dari SEMUA pegawai) untuk Bulan '+bulanPilihan+'? Tindakan ini tidak bisa dibatalkan.')) return;
+  if(!isAdmin){alert('Hanya admin yang bisa menghapus semua data.');return;}
+  const selId=jenis==='kegiatan'?'hapusBulanKegiatan':'hapusBulanHadir',bulanPilihan=document.getElementById(selId).value;
+  if(!bulanPilihan){alert('Pilih dulu bulan yang mau dihapus.');return;}
+  const [nm,ys]=bulanPilihan.split(' '),year=Number(ys),month=BULAN_NAMES.indexOf(nm)+1;
+  const label=jenis==='kegiatan'?'Kegiatan':'Kehadiran';
+  if(!confirm('Hapus SEMUA '+label+' untuk '+bulanPilihan+'? Tindakan ini tidak bisa dibatalkan.'))return;
   try{
-    const table = jenis==='kegiatan' ? 'kegiatan' : 'kehadiran';
-    const { error } = await sb.from(table).delete().eq('bulan', bulanPilihan);
-    if(error) throw error;
-    await loadBulanHapusList();
-    if(jenis==='kegiatan') await muatData(); else await muatDataHadir();
-    alert('Data '+label+' untuk Bulan '+bulanPilihan+' berhasil dihapus.');
-  }catch(e){ alert('Gagal menghapus: '+e.message); }
+    const {data:reports,error:repError}=await sb.from('reports').select('id').eq('year',year).eq('month',month); if(repError)throw repError;
+    const ids=(reports||[]).map(r=>r.id);
+    if(ids.length){const table=jenis==='kegiatan'?'activities':'attendance';const {error}=await sb.from(table).delete().in('report_id',ids);if(error)throw error;}
+    if(jenis==='kegiatan')await muatData();else await muatDataHadir();
+    alert('Data '+label+' untuk '+bulanPilihan+' berhasil dihapus.');
+  }catch(e){alert('Gagal menghapus: '+e.message);}
 }
 function fmtTgl(t){
   if(!t) return '-';
@@ -659,11 +671,11 @@ function renderTable(){
   document.getElementById('count').textContent = currentData.length;
   const holder = document.getElementById('tableHolder');
   if(currentData.length===0){ holder.innerHTML = '<div class="empty">Belum ada data untuk Nama+Bulan ini.</div>'; return; }
-  let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Dokumentasi Kegiatan</th><th>Uraian Kegiatan</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Jam</th><th>Dokumentasi Kegiatan</th><th>Uraian Kegiatan</th><th></th></tr></thead><tbody>';
   currentData.forEach((d,i)=>{
-    html += '<tr><td>'+(i+1)+'</td><td>'+fmtTgl(d.tanggal)+'</td>'
+    html += '<tr><td>'+(i+1)+'</td><td>'+fmtTgl(d.activity_date || d.tanggal)+'</td><td>'+(d.activity_time||'')+'</td>'
       + '<td class="imgcell">'+(d.foto_url?'<img src="'+d.foto_url+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
-      + '<td class="desk">'+(d.uraian||'')+'</td>'
+      + '<td class="desk">'+(d.uraian || d.description || d.keterangan || '')+'</td>'
       + '<td><button class="btn-danger" onclick="hapusBaris('+d.id+')">Hapus</button></td></tr>';
   });
   html += '</tbody></table>';
@@ -684,9 +696,11 @@ async function tambahDataHadir(){
     let fotoDatangUrl = '', fotoPulangUrl = '';
     if(pendingBlobDatang){ st.textContent = 'Mengunggah foto datang...'; fotoDatangUrl = await uploadToCloudinary(pendingBlobDatang); }
     if(pendingBlobPulang){ st.textContent = 'Mengunggah foto pulang...'; fotoPulangUrl = await uploadToCloudinary(pendingBlobPulang); }
+    st.textContent = 'Menyiapkan report...';
+    const report = await ensureCurrentReport();
     st.textContent = 'Menyimpan data...';
-    const { error } = await sb.from('kehadiran').insert({
-      nama_pegawai: nama, bulan: bulan, tanggal: tanggal,
+    const { error } = await sb.from('attendance').insert({
+      report_id: report.id, attendance_date: tanggal,
       foto_datang_url: fotoDatangUrl, foto_pulang_url: fotoPulangUrl
     });
     if(error) throw error;
@@ -707,7 +721,7 @@ async function tambahDataHadir(){
 }
 async function hapusBarisHadir(id){
   try{
-    const { error } = await sb.from('kehadiran').delete().eq('id', id);
+    const { error } = await sb.from('attendance').delete().eq('id', id);
     if(error) throw error;
     await muatDataHadir();
   }catch(e){ alert('Gagal menghapus: '+e.message); }
@@ -718,7 +732,7 @@ function renderTableHadir(){
   if(currentDataHadir.length===0){ holder.innerHTML = '<div class="empty">Belum ada data untuk Nama+Bulan ini.</div>'; return; }
   let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Data Dukung Kehadiran Datang</th><th>Data Dukung Kehadiran Pulang</th><th></th></tr></thead><tbody>';
   currentDataHadir.forEach((d,i)=>{
-    html += '<tr><td>'+(i+1)+'</td><td>'+fmtTgl(d.tanggal)+'</td>'
+    html += '<tr><td>'+(i+1)+'</td><td>'+fmtTgl(d.attendance_date || d.tanggal)+'</td>'
       + '<td class="imgcell">'+(d.foto_datang_url?'<img src="'+d.foto_datang_url+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
       + '<td class="imgcell">'+(d.foto_pulang_url?'<img src="'+d.foto_pulang_url+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
       + '<td><button class="btn-danger" onclick="hapusBarisHadir('+d.id+')">Hapus</button></td></tr>';
@@ -805,7 +819,7 @@ async function unduhWord(){
         cell([p(String(i+1))], 0),
         cell([p(fmtTgl(d.tanggal))], 1),
         cell([imgPara], 2),
-        cell([new Paragraph({ children:[new TextRun(d.uraian||'')] })], 3),
+        cell([new Paragraph({ children:[new TextRun(d.uraian || d.description || d.keterangan || '')] })], 3),
       ]}));
     }
 
