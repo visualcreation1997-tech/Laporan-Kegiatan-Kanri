@@ -59,8 +59,8 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
   <div class="sub">Foto disimpan di Cloudinary, data tersimpan pusat di Supabase — bisa diakses dari perangkat manapun.</div>
   <div class="card" id="loginCard">
     <strong>Login</strong>
-    <label>Username</label>
-    <input id="login_user" type="text" placeholder="Contoh: Kanri001">
+    <label>Email / Username</label>
+    <input id="login_user" type="text" placeholder="Email akun atau username">
     <label>Password</label>
     <input id="login_pass" type="password" placeholder="Password">
     <div class="row-actions">
@@ -441,7 +441,10 @@ async function doLogin(){
   const st = document.getElementById('loginStatus');
   if(!user || !pass){ alert('Isi username dan password.'); return; }
   st.textContent = 'Memproses...';
-  const email = user.toLowerCase()+'@laporan.internal';
+  // Akun Supabase yang digunakan untuk recovery memakai email asli.
+  // Jika pengguna memasukkan email, gunakan email tersebut apa adanya.
+  // Format username lama tetap didukung dengan domain internal.
+  const email = user.includes('@') ? user.toLowerCase() : user.toLowerCase()+'@laporan.internal';
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
   if(error){ st.textContent=''; alert('Login gagal: username atau password salah.'); return; }
   st.textContent = '';
