@@ -17,7 +17,7 @@ h1{font-size:1.3rem;margin:0 0 4px;}
 .sub{color:var(--muted);font-size:.85rem;margin-bottom:18px;}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;}
 label{display:block;font-size:.8rem;color:var(--muted);margin:10px 0 4px;}
-input[type=text],input[type=date],textarea,select{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.9rem;}
+input[type=text],input[type=password],input[type=email],input[type=date],textarea,select{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.9rem;}
 textarea{resize:vertical;min-height:50px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 @media (min-width:760px){.grid2{grid-template-columns:1fr 1fr;}}
@@ -40,6 +40,8 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
 .desk{font-size:.78rem;text-align:left;max-width:200px;}
 .small{font-size:.75rem;color:var(--muted);}
 .status{font-size:.78rem;color:var(--accent);}
+.auth-link{background:none;border:none;padding:0;color:var(--accent);font-size:.82rem;font-weight:500;text-decoration:underline;cursor:pointer;}
+.auth-note{font-size:.78rem;color:var(--muted);margin-top:8px;line-height:1.45;}
 .warn{background:#fff3cd;color:#7a5b00;border:1px solid #ffe08a;border-radius:8px;padding:10px 12px;font-size:.8rem;margin-bottom:16px;}
 .chip-list{display:flex;flex-wrap:wrap;gap:8px;}
 .chip{background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:7px 14px;font-size:.82rem;cursor:pointer;color:var(--text);}
@@ -49,7 +51,6 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
 
 .report-status{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--border);font-size:.78rem;font-weight:600;}
 .status-draft{color:var(--muted)}.status-submitted{color:#b45309}.status-approved{color:#15803d}.status-revision{color:#b91c1c}
-.gps-info{font-size:.75rem;color:var(--muted);margin-top:6px;}
 </style>
 </head>
 <body>
@@ -58,13 +59,41 @@ td.imgcell img{max-width:110px;max-height:90px;display:block;margin:2px auto;bor
   <div class="sub">Foto disimpan di Cloudinary, data tersimpan pusat di Supabase — bisa diakses dari perangkat manapun.</div>
   <div class="card" id="loginCard">
     <strong>Login</strong>
-    <label>Username</label>
-    <input id="login_user" type="text" placeholder="Contoh: Kanri001">
+    <label>Email / Username</label>
+    <input id="login_user" type="text" placeholder="Email akun atau username" autocomplete="username">
     <label>Password</label>
-    <input id="login_pass" type="password" placeholder="Password">
+    <input id="login_pass" type="password" placeholder="Password" autocomplete="current-password">
     <div class="row-actions">
       <button class="btn-primary" onclick="doLogin()">Masuk</button>
       <span class="status" id="loginStatus"></span>
+    </div>
+    <div style="margin-top:10px">
+      <button class="auth-link" onclick="showForgotPassword()">Lupa password?</button>
+    </div>
+  </div>
+
+  <div class="card" id="forgotPasswordCard" style="display:none">
+    <strong>Lupa Password</strong>
+    <div class="auth-note">Masukkan email yang terdaftar pada akun Supabase. Link untuk membuat password baru akan dikirim ke email tersebut.</div>
+    <label>Email</label>
+    <input id="recovery_email" type="email" placeholder="contoh@email.com" autocomplete="email">
+    <div class="row-actions">
+      <button class="btn-primary" id="btnSendRecovery" onclick="sendPasswordRecovery()">Kirim Link Reset</button>
+      <button class="btn-ghost" onclick="showLoginCard()">Kembali</button>
+      <span class="status" id="recoveryStatus"></span>
+    </div>
+  </div>
+
+  <div class="card" id="resetPasswordCard" style="display:none">
+    <strong>Buat Password Baru</strong>
+    <div class="auth-note">Silakan buat password baru untuk akun Anda. Gunakan minimal 8 karakter.</div>
+    <label>Password Baru</label>
+    <input id="new_password" type="password" placeholder="Password baru" autocomplete="new-password">
+    <label>Konfirmasi Password Baru</label>
+    <input id="new_password_confirm" type="password" placeholder="Ulangi password baru" autocomplete="new-password">
+    <div class="row-actions">
+      <button class="btn-primary" id="btnUpdatePassword" onclick="updateNewPassword()">Simpan Password Baru</button>
+      <span class="status" id="resetStatus"></span>
     </div>
   </div>
 
@@ -324,17 +353,126 @@ async function pilihPegawaiDariSelect(nama){
 /* ---------- Profil employee dari Supabase ---------- */
 let currentEmployee = null;
 
-/* ---------- Login / sesi ---------- */
+/* ---------- Login / recovery password / sesi ---------- */
+let recoveryMode = false;
+
+function hideAuthCards(){
+  document.getElementById('loginCard').style.display='none';
+  document.getElementById('forgotPasswordCard').style.display='none';
+  document.getElementById('resetPasswordCard').style.display='none';
+}
+
+function showLoginCard(){
+  recoveryMode = false;
+  hideAuthCards();
+  document.getElementById('loginCard').style.display='block';
+  document.getElementById('appContent').style.display='none';
+  const rs=document.getElementById('recoveryStatus');
+  if(rs) rs.textContent='';
+  const ps=document.getElementById('resetStatus');
+  if(ps) ps.textContent='';
+}
+
+function showForgotPassword(){
+  hideAuthCards();
+  document.getElementById('forgotPasswordCard').style.display='block';
+  document.getElementById('appContent').style.display='none';
+  document.getElementById('recovery_email').focus();
+}
+
+function showResetPassword(){
+  recoveryMode = true;
+  hideAuthCards();
+  document.getElementById('resetPasswordCard').style.display='block';
+  document.getElementById('appContent').style.display='none';
+  document.getElementById('new_password').focus();
+}
+
+async function sendPasswordRecovery(){
+  const email = document.getElementById('recovery_email').value.trim();
+  const st = document.getElementById('recoveryStatus');
+  const btn = document.getElementById('btnSendRecovery');
+  if(!email){ alert('Masukkan email akun terlebih dahulu.'); return; }
+  if(!email.includes('@')){ alert('Format email belum benar.'); return; }
+  btn.disabled=true;
+  st.textContent='Mengirim link reset...';
+  try{
+    const redirectTo = window.location.origin + window.location.pathname;
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+    if(error) throw error;
+    st.textContent='Link reset sudah dikirim. Periksa email Anda.';
+  }catch(e){
+    st.textContent='';
+    alert('Gagal mengirim link reset: '+e.message);
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+async function updateNewPassword(){
+  const p1=document.getElementById('new_password').value;
+  const p2=document.getElementById('new_password_confirm').value;
+  const st=document.getElementById('resetStatus');
+  const btn=document.getElementById('btnUpdatePassword');
+  if(p1.length<8){ alert('Password baru minimal 8 karakter.'); return; }
+  if(p1!==p2){ alert('Konfirmasi password tidak sama.'); return; }
+  btn.disabled=true;
+  st.textContent='Menyimpan password baru...';
+  try{
+    const { error } = await sb.auth.updateUser({ password:p1 });
+    if(error) throw error;
+    st.textContent='Password berhasil diperbarui.';
+    await sb.auth.signOut();
+    recoveryMode=false;
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    alert('Password berhasil diperbarui. Silakan login menggunakan password baru.');
+    showLoginCard();
+  }catch(e){
+    st.textContent='';
+    alert('Gagal memperbarui password: '+e.message);
+  }finally{
+    btn.disabled=false;
+  }
+}
+
 async function doLogin(){
   const user = document.getElementById('login_user').value.trim();
   const pass = document.getElementById('login_pass').value;
   const st = document.getElementById('loginStatus');
-  if(!user || !pass){ alert('Isi username dan password.'); return; }
+
+  if(!user || !pass){
+    alert('Isi email/username dan password.');
+    return;
+  }
+
   st.textContent = 'Memproses...';
-  const email = user.toLowerCase()+'@laporan.internal';
-  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
-  if(error){ st.textContent=''; alert('Login gagal: usernama atau password salah.'); return; }
+
+  // Jika input sudah berupa email, pakai email Supabase apa adanya.
+  // Username lama tetap didukung dengan domain internal.
+  const email = user.includes('@')
+    ? user.toLowerCase()
+    : user.toLowerCase() + '@laporan.internal';
+
+  const { error } = await sb.auth.signInWithPassword({
+    email,
+    password: pass
+  });
+
+  if(error){
+    st.textContent = '';
+    console.error('Supabase login error:', error);
+
+    alert(
+      'Login gagal.\n\n' +
+      'Pesan Supabase: ' + (error.message || 'Unknown error') +
+      '\n\n' +
+      'Jika akun dibuat menggunakan email asli, masukkan email lengkap, misalnya: nama@gmail.com'
+    );
+    return;
+  }
+
   st.textContent = '';
+  recoveryMode = false;
   await showApp();
 }
 async function doLogout(){
@@ -405,8 +543,20 @@ async function showApp(){
   if(getBulan()) { await muatData(); await muatDataHadir(); if(isAdmin) await loadAdminDashboard(); }
 }
 
+sb.auth.onAuthStateChange((event)=>{
+  if(event==='PASSWORD_RECOVERY'){
+    showResetPassword();
+  }
+});
+
 window.addEventListener('load', async ()=>{
+  const hash = window.location.hash || '';
+  const isRecoveryUrl = /(?:^|&)type=recovery(?:&|$)/.test(hash);
   const { data:{ session } } = await sb.auth.getSession();
+  if(isRecoveryUrl || recoveryMode){
+    showResetPassword();
+    return;
+  }
   if(session) showApp();
 });
 
@@ -543,26 +693,6 @@ async function muatDataHadir(){
   }catch(e){alert('Gagal memuat data kehadiran: '+e.message);}
 }
 
-/* ---------- GPS browser: digunakan saat menambah kegiatan / attendance ---------- */
-function getLocation(){
-  return new Promise((resolve,reject)=>{
-    if(!navigator.geolocation){
-      reject(new Error('Browser tidak mendukung GPS.'));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      position=>resolve({latitude:position.coords.latitude,longitude:position.coords.longitude}),
-      error=>reject(error),
-      {enableHighAccuracy:true,timeout:15000,maximumAge:0}
-    );
-  });
-}
-
-async function getLocationSafe(){
-  try{ return await getLocation(); }
-  catch(e){ console.warn('GPS tidak tersedia/ditolak:',e.message||e); return null; }
-}
-
 function updateReportStatusUI(report){
   const controls=document.getElementById('reportControls');
   const badge=document.getElementById('reportStatus');
@@ -692,16 +822,12 @@ async function tambahData(){
     const report = await ensureCurrentReport();
     st.textContent = 'Menyimpan data...';
     const activityTime = new Date().toISOString();
-    const location = await getLocationSafe();
-    if(!location) st.textContent='GPS tidak tersedia, menyimpan tanpa koordinat...';
     const { error } = await sb.from('activities').insert({
       report_id: report.id,
       activity_date: tanggal,
       activity_time: activityTime,
       description: desk,
-      photo_url: fotoUrl,
-      latitude: location?.latitude ?? null,
-      longitude: location?.longitude ?? null
+      photo_url: fotoUrl
     });
     if(error) throw error;
     st.textContent = 'Tersimpan.';
@@ -765,7 +891,7 @@ function renderTable(){
   currentData.forEach((d,i)=>{
     html += '<tr><td>'+(i+1)+'</td><td>'+fmtTgl(d.activity_date || d.tanggal)+'</td><td>'+(d.activity_time||'')+'</td>'
       + '<td class="imgcell">'+((d.photo_url||d.foto_url)?'<img src="'+(d.photo_url||d.foto_url)+'">':'<span class="small">(tanpa foto)</span>')+'</td>'
-      + '<td class="desk">'+(d.description || d.uraian || d.keterangan || '')+(d.latitude!=null&&d.longitude!=null?'<div class="gps-info">GPS: '+Number(d.latitude).toFixed(6)+', '+Number(d.longitude).toFixed(6)+'</div>':'')+'</td>'
+      + '<td class="desk">'+(d.description || d.uraian || d.keterangan || '')+'</td>'
       + '<td><button class="btn-danger" onclick="hapusBaris('+d.id+')">Hapus</button></td></tr>';
   });
   html += '</tbody></table>';
@@ -789,14 +915,11 @@ async function tambahDataHadir(){
     st.textContent = 'Menyiapkan report...';
     const report = await ensureCurrentReport();
     st.textContent = 'Menyimpan data...';
-    const location = await getLocationSafe();
     const { error } = await sb.from('attendance').upsert({
       report_id: report.id,
       attendance_date: tanggal,
       check_in_photo: fotoDatangUrl,
-      check_in_time: new Date().toISOString(),
-      check_in_latitude: location?.latitude ?? null,
-      check_in_longitude: location?.longitude ?? null
+      check_in_time: new Date().toISOString()
     }, {onConflict:'report_id,attendance_date'});
     if(error) throw error;
     st.textContent = 'Tersimpan.';
@@ -818,7 +941,6 @@ async function tambahDataHadir(){
 }
 async function pulangAttendance(attendanceId){
   try{
-    const location=await getLocationSafe();
     let fotoUrl='';
     const inp=document.getElementById('checkout_'+attendanceId);
     if(inp?.files?.[0]){
@@ -826,9 +948,7 @@ async function pulangAttendance(attendanceId){
     }
     const {error}=await sb.from('attendance').update({
       check_out_photo:fotoUrl,
-      check_out_time:new Date().toISOString(),
-      check_out_latitude:location?.latitude ?? null,
-      check_out_longitude:location?.longitude ?? null
+      check_out_time:new Date().toISOString()
     }).eq('id',attendanceId);
     if(error) throw error;
     await muatDataHadir();
