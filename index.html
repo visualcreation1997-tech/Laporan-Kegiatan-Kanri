@@ -1030,7 +1030,7 @@ async function loadAdminDashboard(){
     rows.forEach(r=>{
       const e=r.employee||{};
       html+='<tr><td class="desk">'+(e.name||'-')+'</td><td>'+(e.department||'-')+'</td><td>'+(e.position||'-')+'</td><td>'+(r.status||'draft')+'</td><td>'+((r.activities||[]).length)+'</td><td>'+((r.attendance||[]).length)+'</td><td>'
-        +((r.status==='submitted')?'<button class="btn-primary" onclick="reviewReport('+r.id+',\'approved\')">Approve</button> <button class="btn-ghost" onclick="reviewReport('+r.id+',\'revision\')">Revision</button>':'-')+'</td></tr>';
+        +((r.status==='submitted')?'<button class="btn-primary" onclick="reviewReport('+JSON.stringify(r.id)+',\'approved\')">Approve</button> <button class="btn-ghost" onclick="reviewReport('+JSON.stringify(r.id)+',\'revision\')">Revision</button>':'-')+'</td></tr>';
     });
     html+='</tbody></table>'; holder.innerHTML=html;
   }catch(e){holder.innerHTML='<div class="empty">Gagal memuat dashboard: '+e.message+'</div>';}
