@@ -1062,6 +1062,14 @@ async function getWordImage(url){
 }
 
 async function fotoParagraphWord(url, width=160, height=120){
+  // Fungsi ini berada di scope global, sedangkan Paragraph/ImageRun/TextRun
+  // sebelumnya hanya didefinisikan sebagai const lokal di unduhWord().
+  // Ambil constructor langsung dari object docx agar tidak terkena
+  // ReferenceError: Paragraph is not defined.
+  if(typeof docx === 'undefined') throw new Error('Library docx.js belum dimuat.');
+
+  const { Paragraph, ImageRun, TextRun, AlignmentType } = docx;
+
   if(!url) return new Paragraph('-');
 
   try{
